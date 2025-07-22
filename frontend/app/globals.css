@@ -1,0 +1,40 @@
+@import url("https://fonts.googleapis.com/css2?family=Noto+Sans+Thai:wght@100..900&display=swap");
+@import "tailwindcss";
+
+@theme {
+  --font-noto-sans-thai: "Noto Sans Thai", sans-serif;
+}
+
+html,
+body {
+  height: 100%; /* ทำให้ html และ body สูงเต็ม Viewport */
+  margin: 0;
+  padding: 0;
+  overflow: hidden; /* **สำคัญมาก:** ป้องกันไม่ให้หน้าเว็บหลัก Scroll */
+  display: flex; /* ทำให้ body เป็น flex container */
+  flex-direction: column; /* จัดเรียงลูกๆ ในแนวตั้ง */
+  font-family: "Noto Sans Thai", Helvetica, sans-serif;
+}
+
+.grid-container {
+  display: grid;
+  grid-template-columns: 1fr 2fr 3fr;
+  grid-gap: 10px;
+  background-color: #2196f3;
+  padding: 10px;
+}
+.grid-container > div {
+  background-color: rgba(255, 255, 255, 0.8);
+  text-align: center;
+  padding: 20px 0;
+  font-size: 30px;
+}
+
+input {
+  width: 100%;
+}
+
+input[type="text"],
+input[type="number"] {
+  display: inline-block;
+}
