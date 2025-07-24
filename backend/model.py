@@ -11,9 +11,8 @@ class Product(db.Model):
     unit = db.Column(db.String(20), nullable=False) #หน่วยนับ เช่น 
     cost_price = db.Column(db.Float, nullable=False) #ราคาต้นทุนสินค้า
     stock = db.Column(db.Integer, default=0) #จำนวนคงเหลือรวม
-    variants = db.relationship('ProductVariant', backref='product', cascade="all, delete-orphan") #ต่อ One-to-Many กับ ProductVariant เพราะ Product 1 ชิ้นมีรูปแบบการขายได้หลายแบบ
-    images = db.relationship('ProductImage', backref='product', cascade="all, delete-orphan")  #ต่อ One-to-Many กับ ProductImage เพราะ Product 1 ชิ้นมีรูปภาพหลายภาพได้ ใช้แค่แสดงเฉยๆ 
-
+    variants = db.relationship('ProductVariant', backref='product', cascade="all, delete-orphan", lazy="selectin") #ต่อ One-to-Many กับ ProductVariant เพราะ Product 1 ชิ้นมีรูปแบบการขายได้หลายแบบ
+    images = db.relationship('ProductImage', backref='product', cascade="all, delete-orphan", lazy="selectin")  #ต่อ One-to-Many กับ ProductImage เพราะ Product 1 ชิ้นมีรูปภาพหลายภาพได้ ใช้แค่แสดงเฉยๆ 
     @property
     def serialized_variants(self):
         return [

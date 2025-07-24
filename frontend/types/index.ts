@@ -28,3 +28,10 @@ type Products = {
     sku_suffix: string;
   }[];
 };
+
+type Pagination = {
+  limit: number;
+  page: number;
+  total: number;
+  total_pages: number;
+};

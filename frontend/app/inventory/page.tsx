@@ -1,26 +1,56 @@
 "use client";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import axios from "axios";
+import type { AxiosResponse } from "axios";
 import AddButton from "@/components/PrimaryButton";
-import Table from "@/feature/newProduct/component/Table";
 import { headerColumns } from "@/constant";
 import { useRouter, usePathname } from "next/navigation";
 import TableDiv from "@/feature/newProduct/component/TableDiv";
+import { Pagination } from "@/components/Pagination";
+
+const ITEMS_PER_PAGE = 3;
 
 export default function InventoryPage() {
   const router = useRouter();
   const pathname = usePathname();
   const [products, setProducts] = useState<Products[]>([]);
+  const [pagination, setPagination] = useState<Pagination>({
+    page: 1,
+    limit: 10,
+    total: 10,
+    total_pages: 1,
+  });
 
-  useEffect(() => {
-    axios
-      .get("http://localhost:5001/api/inventory")
-      .then((res) => setProducts(res.data))
-      .catch((err) => console.error(err));
+  const handleClick = useCallback(() => {
+    router.push(`${pathname}/add`);
   }, []);
 
-  const handleClick = () => {
-    router.push(`${pathname}/add`);
+  const fetchData = useCallback(async (page: number, limit: number) => {
+    try {
+      const res: AxiosResponse<{
+        data: Products[];
+        pagination: Pagination;
+      }> = await axios.get(
+        `http://localhost:5001/api/inventory?page=${page}&limit=${limit}`
+      );
+      const { data, pagination } = res.data;
+      setProducts(data);
+      setPagination(pagination);
+    } catch (err) {
+      console.error("❌ Failed to fetch data:", err);
+    }
+  }, []);
+
+  useEffect(() => {
+    fetchData(pagination.page, pagination.limit);
+  }, []);
+
+  const handlePageChange = (newPage: number) => {
+    fetchData(newPage, pagination.limit);
+  };
+
+  const handleLimitChange = (newLimit: number) => {
+    fetchData(1, newLimit); // reset to first page
   };
 
   const handleDelete = async (id: number) => {
@@ -41,17 +71,20 @@ export default function InventoryPage() {
             <AddButton text={"Add Inventory"} handleClick={handleClick} />
           </div>
           {products.length > 0 ? (
-            // <Table
-            //   headerColumns={headerColumns}
-            //   data={products}
-            //   onDelete={handleDelete}
-            // />
             <TableDiv headerColumns={headerColumns} data={products} />
           ) : (
             <div className="text-center text-gray-500 py-10">
               ไม่มีสินค้าที่จะแสดง
             </div>
           )}
+          <Pagination
+            currentPage={pagination.page}
+            limit={pagination.limit}
+            total={pagination.total}
+            totalPages={pagination.total_pages}
+            onPageChange={handlePageChange}
+            onLimitChange={handleLimitChange}
+          />
         </div>
         <div className="w-1/7 min-w-[100px] bg-gray-50  h-screen "></div>
       </div>

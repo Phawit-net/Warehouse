@@ -1,7 +1,7 @@
 from flask import abort, Blueprint, jsonify, request, send_from_directory
 from model import db, Product, ProductVariant, ProductImage
 from werkzeug.utils import secure_filename
-from sqlalchemy.orm import subqueryload
+from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import SQLAlchemyError
 import os
 import json
@@ -39,13 +39,26 @@ def delete_image_file(filename):
 @inventory_bp.route('/', methods=['GET'])
 def get_all_products():
     try:
+        page = int(request.args.get('page', 1))
+        limit = int(request.args.get('limit', 10))
+        offset = (page - 1) * limit
+
         products = (
             Product.query
-            .options(subqueryload(Product.images), subqueryload(Product.variants))
+            .options(
+                selectinload(Product.images),
+                selectinload(Product.variants)
+            )
+            .offset(offset)
+            .limit(limit)
+            .distinct()
             .all()
         )
 
-        result = [
+        total = Product.query.count()
+
+        result = {
+            "data":[
             {
                 "id": p.id,
                 "name": p.name,
@@ -63,7 +76,13 @@ def get_all_products():
                 ],
             }
             for p in products
-        ]
+        ], 
+        "pagination": {
+            "page": page,
+            "limit": limit,
+            "total": total,
+            "total_pages": (total + limit - 1) // limit
+        }}
         return jsonify(result), 200
 
     except Exception as e:
@@ -113,13 +132,13 @@ def create_product():
 
         # ✅ บันทึก main image
         if main_image and allowed_file(main_image.filename):
-            filename = save_image(main_image, UPLOAD_FOLDER)
+            filename = save_image(main_image)
             db.session.add(ProductImage(product_id=new_product.id, image_filename=filename, is_main=True))
 
         # ✅ บันทึก other images
         for img in other_images:
             if img and allowed_file(img.filename):
-                filename = save_image(img, UPLOAD_FOLDER)
+                filename = save_image(img)
                 db.session.add(ProductImage(product_id=new_product.id, image_filename=filename, is_main=False))
 
         db.session.commit()
