@@ -52,7 +52,7 @@ class ProductVariant(db.Model):
             "is_for_sale": self.is_for_sale
         }
 
-# ตารางเก็บข้อมูลไฟล์รูปของ ญพนกีแะ
+# ตารางเก็บข้อมูลไฟล์รูปของ Product
 class ProductImage(db.Model):
     __tablename__ = 'product_image'
     id = db.Column(db.Integer, primary_key=True)

@@ -6,6 +6,7 @@ type Props = {
   color: ColorType;
   type: "edit" | "delete" | "import" | "sale";
   handleClick?: (e: { stopPropagation: () => void }) => void;
+  onMouseEnter?: () => void;
 };
 
 const colorMap = {
@@ -13,11 +14,11 @@ const colorMap = {
   red: "bg-[#ef6b6b] hover:bg-[#d85454]",
 };
 
-const IconsButton = ({ color, type, handleClick }: Props) => {
+const IconsButton = ({ color, type, handleClick, onMouseEnter }: Props) => {
   return (
     <button
-      // style={{ backgroundColor: `#${color}` }}
       className={`${colorMap[color]} w-fit rounded-md p-1 cursor-pointer`}
+      onMouseEnter={onMouseEnter}
       onClick={handleClick}
     >
       {type === "edit" ? (

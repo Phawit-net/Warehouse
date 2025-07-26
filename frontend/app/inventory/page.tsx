@@ -1,62 +1,50 @@
 "use client";
-import { useCallback, useEffect, useState } from "react";
+import useSWR from "swr";
+import { fetcher } from "@/lib/fetcher";
+import { useCallback, useState } from "react";
 import axios from "axios";
-import type { AxiosResponse } from "axios";
 import AddButton from "@/components/PrimaryButton";
 import { headerColumns } from "@/constant";
 import { useRouter, usePathname } from "next/navigation";
 import TableDiv from "@/feature/newProduct/component/TableDiv";
 import { Pagination } from "@/components/Pagination";
 
-const ITEMS_PER_PAGE = 3;
-
 export default function InventoryPage() {
   const router = useRouter();
   const pathname = usePathname();
-  const [products, setProducts] = useState<Products[]>([]);
-  const [pagination, setPagination] = useState<Pagination>({
-    page: 1,
-    limit: 10,
-    total: 10,
+  const [page, setPage] = useState(1);
+  const [limit, setLimit] = useState(10);
+
+  const { data, error, mutate, isLoading } = useSWR(
+    `http://localhost:5001/api/inventory?page=${page}&limit=${limit}`,
+    fetcher
+  );
+
+  const products = data?.data ?? [];
+  const pagination = data?.pagination ?? {
+    page,
+    limit,
+    total: 0,
     total_pages: 1,
-  });
+  };
 
   const handleClick = useCallback(() => {
     router.push(`${pathname}/add`);
   }, []);
 
-  const fetchData = useCallback(async (page: number, limit: number) => {
-    try {
-      const res: AxiosResponse<{
-        data: Products[];
-        pagination: Pagination;
-      }> = await axios.get(
-        `http://localhost:5001/api/inventory?page=${page}&limit=${limit}`
-      );
-      const { data, pagination } = res.data;
-      setProducts(data);
-      setPagination(pagination);
-    } catch (err) {
-      console.error("❌ Failed to fetch data:", err);
-    }
-  }, []);
-
-  useEffect(() => {
-    fetchData(pagination.page, pagination.limit);
-  }, []);
-
   const handlePageChange = (newPage: number) => {
-    fetchData(newPage, pagination.limit);
+    setPage(newPage);
   };
 
   const handleLimitChange = (newLimit: number) => {
-    fetchData(1, newLimit); // reset to first page
+    setLimit(newLimit);
+    setPage(1); // reset page
   };
 
   const handleDelete = async (id: number) => {
     try {
       await axios.delete(`http://localhost:5001/api/inventory/${id}`);
-      setProducts((prev) => prev.filter((p) => p.id !== id));
+      mutate(); // refresh data after delete
     } catch (error) {
       console.error("❌ Failed to delete:", error);
     }
@@ -70,7 +58,11 @@ export default function InventoryPage() {
             <h1 className="text-2xl font-bold">Inventory</h1>
             <AddButton text={"Add Inventory"} handleClick={handleClick} />
           </div>
-          {products.length > 0 ? (
+          {error ? (
+            <div className="text-red-500">โหลดข้อมูลผิดพลาด</div>
+          ) : isLoading ? (
+            <div className="text-gray-500">กำลังโหลดข้อมูล...</div>
+          ) : products.length > 0 ? (
             <TableDiv headerColumns={headerColumns} data={products} />
           ) : (
             <div className="text-center text-gray-500 py-10">

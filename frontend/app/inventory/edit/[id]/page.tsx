@@ -1,22 +1,22 @@
 "use client";
 import Form from "@/feature/newProduct/component/Form";
-import axios from "axios";
-import { useEffect, useState } from "react";
+import useSWR from "swr";
+import { fetcher } from "@/lib/fetcher";
 import { useParams } from "next/navigation";
 
 const EditPage = () => {
-  const [product, setProduct] = useState<Products | null>(null);
   const params = useParams<{ id: string }>();
 
-  useEffect(() => {
-    if (!params.id) return;
-    axios
-      .get(`http://localhost:5001/api/inventory/${params.id}`)
-      .then((res) => setProduct(res.data))
-      .catch((err) => console.error(err));
-  }, [params.id]);
+  const { data: product, error } = useSWR(
+    `http://localhost:5001/api/inventory/${params.id}`,
+    fetcher
+  );
 
-  if (!product) return <div className="p-6 text-gray-400">Loading...</div>;
+  if (error)
+    return (
+      <div className="p-6 text-red-400">เกิดข้อผิดพลาดในการโหลดข้อมูล</div>
+    );
+  if (!product) return <div className="p-6 text-gray-400">ไม่พบสินค้า</div>;
 
   return (
     <div className="bg-[#fff0e4] h-full p-3 ">

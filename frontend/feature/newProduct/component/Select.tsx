@@ -1,3 +1,4 @@
+import React from "react";
 import { useState, useRef, useEffect } from "react";
 
 type Props = {
@@ -6,7 +7,7 @@ type Props = {
   onChange: (newLimit: number) => void;
 };
 
-export const Select = ({ options, limit, onChange }: Props) => {
+export const Select = React.memo(({ options, limit, onChange }: Props) => {
   const [open, setOpen] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -64,4 +65,4 @@ export const Select = ({ options, limit, onChange }: Props) => {
       )}
     </div>
   );
-};
+});

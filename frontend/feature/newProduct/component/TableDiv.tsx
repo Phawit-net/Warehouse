@@ -3,6 +3,8 @@ import React, { useLayoutEffect, useRef, useState } from "react";
 import IconsButton from "@/components/IconsButton";
 import Image from "next/image";
 import { useRouter, usePathname } from "next/navigation";
+import { mutate } from "swr";
+import { fetcher } from "@/lib/fetcher";
 
 type Props = {
   headerColumns: HeaderColumn[];
@@ -17,6 +19,13 @@ const Table = ({ headerColumns, data }: Props) => {
   const [detailHeights, setDetailHeights] = useState<{ [key: string]: number }>(
     {}
   );
+
+  const prefetchProduct = (id: string) => {
+    mutate(
+      `http://localhost:5001/api/inventory/${id}`,
+      fetcher(`http://localhost:5001/api/inventory/${id}`)
+    );
+  };
 
   useLayoutEffect(() => {
     if (detailId && detailRefs.current[detailId]) {
@@ -127,10 +136,11 @@ const Table = ({ headerColumns, data }: Props) => {
                             <IconsButton
                               type="edit"
                               color="blue"
+                              onMouseEnter={() => prefetchProduct(row.id)}
                               handleClick={(e: {
                                 stopPropagation: () => void;
                               }) => {
-                                router.push(`${pathname}/${row.id}`);
+                                router.push(`${pathname}/edit/${row.id}`);
                               }}
                             />
                             {/* <IconsButton
@@ -138,7 +148,16 @@ const Table = ({ headerColumns, data }: Props) => {
                               color="red"
                               handleClick={() => onDelete(row.id)}
                             /> */}
-                            <IconsButton type="import" color="blue" />
+                            <IconsButton
+                              type="import"
+                              color="blue"
+                              onMouseEnter={() => prefetchProduct(row.id)}
+                              handleClick={(e: {
+                                stopPropagation: () => void;
+                              }) => {
+                                router.push(`${pathname}/stock-in/${row.id}`);
+                              }}
+                            />
                             <IconsButton type="sale" color="red" />
                           </div>
                         </div>

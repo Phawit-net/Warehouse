@@ -4,7 +4,7 @@ import axios from "axios";
 import TextInput from "@/components/TextInput";
 import ImageUploader from "@/components/ImageUploader";
 import MultiImageUploader from "@/components/MultiImageUploader";
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useRootPathRedirect } from "@/hooks/useRootPathRedirect";
 
 type SaleMode = {
@@ -89,60 +89,66 @@ const Form = ({ mode, initialData }: Props) => {
     }
   }, [initialData, reset]);
 
-  const buildFormData = (data: ProductForm): FormData => {
-    const formData = new FormData();
+  const buildFormData = useCallback(
+    (data: ProductForm): FormData => {
+      const formData = new FormData();
 
-    formData.append("name", data.name);
-    formData.append("sku", data.sku);
-    formData.append("category", data.category);
-    formData.append("unit", data.unit);
-    formData.append("cost_price", data.cost_price.toString());
-    formData.append("variants", JSON.stringify(data.variants));
+      formData.append("name", data.name);
+      formData.append("sku", data.sku);
+      formData.append("category", data.category);
+      formData.append("unit", data.unit);
+      formData.append("cost_price", data.cost_price.toString());
+      formData.append("variants", JSON.stringify(data.variants));
 
-    // ✅ แนบรูปหลัก
-    if (data.main_image) {
-      formData.append("main_image", data.main_image);
-    }
+      // ✅ แนบรูปหลัก
+      if (data.main_image) {
+        formData.append("main_image", data.main_image);
+      }
 
-    // ✅ แนบรูปอื่น
-    data.other_images.forEach((file) => {
-      formData.append("other_images", file);
-    });
+      // ✅ แนบรูปอื่น
+      data.other_images.forEach((file) => {
+        formData.append("other_images", file);
+      });
 
-    // ✅ แนบชื่อรูปภาพที่ต้องลบ
-    if (initialData) {
-      const initialFilenames =
-        initialData.images
-          ?.filter((img) => !img.is_main)
-          .map((img) => img.filename) || [];
-      const deletedImages = initialFilenames.filter(
-        (filename) => !keptOldImages.includes(filename)
-      );
-      deletedImages.forEach((filename) =>
-        formData.append("images_to_delete", filename)
-      );
-    }
-
-    return formData;
-  };
-
-  const onSubmit = async (data: ProductForm) => {
-    const formData = buildFormData(data);
-    try {
-      if (mode === "add") {
-        await axios.post("http://localhost:5001/api/inventory", formData);
-      } else if (mode === "edit" && initialData?.id) {
-        await axios.patch(
-          `http://localhost:5001/api/inventory/${initialData.id}`,
-          formData
+      // ✅ แนบชื่อรูปภาพที่ต้องลบ
+      if (initialData) {
+        const initialFilenames =
+          initialData.images
+            ?.filter((img) => !img.is_main)
+            .map((img) => img.filename) || [];
+        const deletedImages = initialFilenames.filter(
+          (filename) => !keptOldImages.includes(filename)
+        );
+        deletedImages.forEach((filename) =>
+          formData.append("images_to_delete", filename)
         );
       }
-      redirectToRoot();
-    } catch (error) {
-      console.error("❌ Upload failed:", error);
-      // TODO: Add toast / error UI
-    }
-  };
+
+      return formData;
+    },
+    [initialData, keptOldImages]
+  );
+
+  const onSubmit = useCallback(
+    async (data: ProductForm) => {
+      const formData = buildFormData(data);
+      try {
+        if (mode === "add") {
+          await axios.post("http://localhost:5001/api/inventory", formData);
+        } else if (mode === "edit" && initialData?.id) {
+          await axios.patch(
+            `http://localhost:5001/api/inventory/${initialData.id}`,
+            formData
+          );
+        }
+        redirectToRoot();
+      } catch (error) {
+        console.error("❌ Upload failed:", error);
+        // TODO: Add toast / error UI
+      }
+    },
+    [mode, initialData, redirectToRoot, buildFormData]
+  );
 
   return (
     <form
@@ -152,17 +158,31 @@ const Form = ({ mode, initialData }: Props) => {
     >
       <div className="grid grid-cols-[1.5fr_1fr] gap-3">
         <div className="bg-white p-12 rounded-xl">
-          <TextInput label="ชื่อสินค้า" name="name" register={register} />
-          <TextInput label="SKU" name="sku" register={register} />
+          <TextInput
+            label="ชื่อสินค้า"
+            name="name"
+            type="text"
+            register={register}
+            placeholder=""
+          />
+          <TextInput
+            label="SKU"
+            name="sku"
+            type="text"
+            register={register}
+            placeholder=""
+          />
           <TextInput
             label="หมวดหมู่"
             name="category"
+            type="text"
             register={register}
             placeholder={"category"}
           />
           <TextInput
             label="หน่วยนับ"
             name="unit"
+            type="text"
             register={register}
             placeholder={"เช่น ชิ้น, กล่อง, แพค, ใบ"}
           />
@@ -171,6 +191,7 @@ const Form = ({ mode, initialData }: Props) => {
             type="number"
             name="cost_price"
             register={register}
+            placeholder=""
           />
           <div className="flex flex-col mb-5 gap-1">
             <label className="text-md font-semibold">รูปแบบการขาย</label>
@@ -189,6 +210,7 @@ const Form = ({ mode, initialData }: Props) => {
                       label=""
                       isLabel={false}
                       margin={0}
+                      type="text"
                       placeholder="รูปแบบการขาย"
                       name={`variants.${index}.sale_mode`}
                       register={register}
@@ -215,6 +237,7 @@ const Form = ({ mode, initialData }: Props) => {
                       label=""
                       isLabel={false}
                       margin={0}
+                      type="text"
                       placeholder="SKU ต่อท้าย"
                       name={`variants.${index}.sku_suffix`}
                       register={register}

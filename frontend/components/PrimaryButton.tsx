@@ -5,7 +5,7 @@ type Props = {
   handleClick: () => void;
 };
 
-const PrimaryButton = ({ text, handleClick }: Props) => {
+const PrimaryButton = React.memo(({ text, handleClick }: Props) => {
   return (
     <button
       className="bg-[#f49b50] p-2 px-3 text-white flex justify-center items-center justify-items-center gap-2 rounded-lg"
@@ -29,6 +29,6 @@ const PrimaryButton = ({ text, handleClick }: Props) => {
       <span>{text}</span>
     </button>
   );
-};
+});
 
 export default PrimaryButton;
