@@ -7,13 +7,6 @@ import MultiImageUploader from "@/components/MultiImageUploader";
 import { useCallback, useEffect, useState } from "react";
 import { useRootPathRedirect } from "@/hooks/useRootPathRedirect";
 
-type SaleMode = {
-  sale_mode: string;
-  selling_price: number;
-  sku_suffix: string;
-  pack_size: number;
-};
-
 type ProductForm = {
   main_image: File | null;
   other_images: File[];
@@ -23,7 +16,7 @@ type ProductForm = {
   unit: string;
   cost_price: number;
   stock: number;
-  variants: SaleMode[]; // 👈 เป็น array ของรูปแบบการขาย
+  variants: Variants[]; // 👈 เป็น array ของรูปแบบการขาย
 };
 
 type Props = {

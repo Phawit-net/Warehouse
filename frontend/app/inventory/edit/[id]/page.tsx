@@ -7,7 +7,7 @@ import { useParams } from "next/navigation";
 const EditPage = () => {
   const params = useParams<{ id: string }>();
 
-  const { data: product, error } = useSWR(
+  const { data: product, error } = useSWR<Products>(
     `http://localhost:5001/api/inventory/${params.id}`,
     fetcher
   );

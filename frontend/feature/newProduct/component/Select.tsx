@@ -28,7 +28,7 @@ export const Select = React.memo(({ options, limit, onChange }: Props) => {
     <div ref={containerRef} className="relative">
       <button
         onClick={() => setOpen((prev) => !prev)}
-        className="flex items-center gap-2 w-30 justify-center text-left text-gray-500 px-3 py-2 border border-gray-200 rounded-lg bg-white shadow-sm"
+        className="flex items-center gap-2 w-30 justify-center text-left text-gray-500 px-3 py-2 border border-gray-200 rounded bg-white shadow-sm"
       >
         Show {limit}
         <svg
@@ -56,7 +56,7 @@ export const Select = React.memo(({ options, limit, onChange }: Props) => {
                 onChange(option);
                 setOpen(false);
               }}
-              className="w-30 px-3 py-2 flex items-center justify-center  text-gray-500 hover:rounded hover:bg-gray-100 cursor-pointer"
+              className="w-full px-3 py-2 flex items-center justify-center  text-gray-500 hover:rounded hover:bg-gray-100 cursor-pointer"
             >
               Show {option}
             </li>

@@ -29,7 +29,7 @@ const TextInput = ({
         {...register(name)}
         placeholder={placeholder}
         autoComplete="off"
-        className="p-2 rounded bg-[#fff0e4] focus:outline-none text-gray-500 focus:ring-2 focus:ring-[#ffc596]"
+        className="p-2 rounded-sm bg-[#fff0e4] focus:outline-none text-gray-500 focus:ring-2 focus:ring-[#ffc596]"
       />
     </div>
   );

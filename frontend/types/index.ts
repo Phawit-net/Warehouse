@@ -21,12 +21,7 @@ type Products = {
     filename: string;
     is_main: boolean;
   }[];
-  variants: {
-    pack_size: number;
-    sale_mode: string;
-    selling_price: number;
-    sku_suffix: string;
-  }[];
+  variants: Variants[];
 };
 
 type Pagination = {
@@ -34,4 +29,11 @@ type Pagination = {
   page: number;
   total: number;
   total_pages: number;
+};
+
+type Variants = {
+  pack_size: number;
+  sale_mode: string;
+  selling_price: number;
+  sku_suffix: string;
 };
