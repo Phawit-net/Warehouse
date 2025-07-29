@@ -1,4 +1,5 @@
 from flask_sqlalchemy import SQLAlchemy
+from datetime import datetime
 
 db = SQLAlchemy()
  
@@ -60,3 +61,20 @@ class ProductImage(db.Model):
     image_filename = db.Column(db.String(200), nullable=False)  # เช่น 'image1.jpg'
     alt_text = db.Column(db.String(100)) 
     is_main = db.Column(db.Boolean, default=False)  
+
+# ตารางเก็บ history stock-in of Product = เก็บประวัติการรับเข้า(ซื้อ)ของสินค้านั้นๆ
+class StockIn(db.Model):
+    __tablename__ = 'stock_in'
+    id = db.Column(db.Integer, primary_key=True)
+    product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False) #Id ของ Product
+    variant_id = db.Column(db.Integer, db.ForeignKey('product_variant.id'), nullable=False)
+
+    quantity = db.Column(db.Integer, nullable=False)  # จำนวนกล่อง/pack ที่รับเข้า
+    total_units = db.Column(db.Integer, nullable=False)  # จำนวนสินค้าจริงที่รับเข้า (ใช้สำหรับ update stock)
+    
+    image_filename = db.Column(db.String(255))  # ใบเสร็จ หรือไฟล์แนบ
+    note = db.Column(db.Text)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+
+    product = db.relationship("Product", backref="stock_in_entries")
+    variant = db.relationship("ProductVariant")
