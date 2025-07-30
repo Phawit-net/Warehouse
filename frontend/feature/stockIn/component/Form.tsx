@@ -8,6 +8,11 @@ import {
 } from "react-hook-form";
 import TextInput from "@/components/TextInput";
 import Select from "./Select";
+import ToggleSwitch from "@/components/ToggleSwitch";
+import { TimerOff } from "lucide-react";
+import ToggleSwitchCard from "./ToggleSwitchCard";
+import ImageUploader from "@/components/ImageUploader";
+import TextArea from "@/components/TextArea";
 type Props = {
   variantsOption: Variants[];
 };
@@ -21,10 +26,13 @@ type FormData = {
   custom_variant?: string;
   custom_quantity?: number;
   custom_packSize?: number;
+  order_image: File | null;
 };
 
 const Form = ({ variantsOption }: Props) => {
-  const [mode, setMode] = useState<"select" | "manual">("select");
+  const [selectSwitch, setSelectSwitch] = useState(false);
+  const [manualSwitch, setManualSwitch] = useState(false);
+  const [orderPreviewUrl, setOrderPreviewUrl] = useState<string | null>(null);
 
   const {
     register,
@@ -32,6 +40,7 @@ const Form = ({ variantsOption }: Props) => {
     control,
     watch,
     getValues,
+    setValue,
     formState: { errors },
   } = useForm<FormData>({
     defaultValues: {
@@ -41,6 +50,7 @@ const Form = ({ variantsOption }: Props) => {
           variant: variantsOption[0]?.sale_mode,
         },
       ],
+      order_image: null,
     },
   });
 
@@ -74,6 +84,8 @@ const Form = ({ variantsOption }: Props) => {
     (variant) => !selectedVariants.includes(variant.sale_mode)
   );
 
+  const orderImageFile = watch("order_image");
+
   return (
     <form onSubmit={handleSubmit(onSubmit)}>
       <div className="grid grid-cols-[1fr_1fr] gap-3">
@@ -85,29 +97,17 @@ const Form = ({ variantsOption }: Props) => {
               <DatePicker label="วันที่รับเข้า" name="date" field={field} />
             )}
           />
-          <div className="border-1 rounded relative">
-            <label className="absolute text-md font-semibold mb-1 top-[-12] left-2 bg-white px-1">
+          <div className="flex flex-col gap-1">
+            <label className=" text-md font-semibold bg-white px-1">
               เลือกรูปแบบ
             </label>
-            <div
-              className={`flex flex-col gap-2 border-2 p-3 m-5 rounded-sm mb-3 ${
-                mode === "select" ? "border-[#f49b50]" : "border-gray-300"
-              }`}
-              onClick={() => setMode("select")}
+
+            <ToggleSwitchCard
+              label="การรับเข้าจากรายการขาย"
+              isToggle={selectSwitch}
+              onChange={setSelectSwitch}
             >
-              <div className="flex items-center justify-between ">
-                <label className="text-md font-semibold">
-                  การรับเข้าจากรายการขาย
-                </label>
-                <div
-                  className={`w-4.5 h-4.5 ${
-                    mode === "select" ? "bg-[#f49b50]" : "bg-gray-300"
-                  } rounded-full flex items-center justify-center`}
-                >
-                  <div className="w-2.5 h-2.5 bg-white rounded-full"></div>
-                </div>
-              </div>
-              {mode === "select" && (
+              {selectSwitch && (
                 <>
                   {fields.map((field, index) => {
                     const otherSelected =
@@ -120,6 +120,7 @@ const Form = ({ variantsOption }: Props) => {
                         !otherSelected.includes(v.sale_mode) ||
                         v.sale_mode === currentValue
                     );
+
                     return (
                       <div
                         key={field.id}
@@ -203,26 +204,14 @@ const Form = ({ variantsOption }: Props) => {
                   </div>
                 </>
               )}
-            </div>
-            <div
-              className={`flex flex-col gap-2 border-2 p-3 m-5 rounded-sm ${
-                mode === "manual" ? "border-[#f49b50]" : "border-gray-300"
-              }`}
-              onClick={() => setMode("manual")}
+            </ToggleSwitchCard>
+
+            <ToggleSwitchCard
+              label="เพิ่มรูปแบบใหม่หรือรับเข้าใหม่"
+              isToggle={manualSwitch}
+              onChange={setManualSwitch}
             >
-              <div className="flex items-center justify-between ">
-                <label className="text-md font-semibold text-gray-400">
-                  เพิ่มรูปแบบใหม่หรือรับเข้าใหม่
-                </label>
-                <div
-                  className={`w-4.5 h-4.5 ${
-                    mode === "manual" ? "bg-[#f49b50]" : "bg-gray-300"
-                  } rounded-full flex items-center justify-center`}
-                >
-                  <div className="w-2.5 h-2.5 bg-white rounded-full"></div>
-                </div>
-              </div>
-              {mode === "manual" && (
+              {manualSwitch && (
                 <div className="grid grid-cols-[1fr_1fr_1fr] gap-3">
                   <TextInput
                     placeholder="ชื่อ"
@@ -250,10 +239,26 @@ const Form = ({ variantsOption }: Props) => {
                   />
                 </div>
               )}
-            </div>
+            </ToggleSwitchCard>
           </div>
         </div>
-        <div className="bg-red-400">
+        <div className="flex flex-col">
+          <ImageUploader
+            label="อัปโหลดใบส่งของ/ใบสั่งซื้อ"
+            image={orderImageFile}
+            onChange={(file: File | null) => setValue("order_image", file)}
+            imagePreview={orderPreviewUrl || ""}
+            onRemovePreview={() => {
+              setOrderPreviewUrl(null);
+            }}
+          />
+          <TextArea
+            name="note"
+            label="หมายเหตุเพิ่มเติม (ถ้ามี)"
+            margin={0}
+            register={register}
+            placeholder=""
+          />
           <input type="submit" />
         </div>
       </div>

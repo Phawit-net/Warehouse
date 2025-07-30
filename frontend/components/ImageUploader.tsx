@@ -41,14 +41,15 @@ const ImageUploader = React.memo(
     const handleClickUpload = () => {
       inputRef.current?.click();
     };
-
     return (
       <div
         className={`flex flex-col mb-${margin} ${isLabel ? "gap-1" : "gap-0"}`}
       >
         {isLabel && <label className="text-md font-semibold">{label}</label>}
         {imagePreview ? (
-          <div className="group border-2 bg-amber-300 border-gray-300 rounded-xl w-full h-80 flex cursor-pointer relative overflow-hidden">
+          <div
+            className={`group border-2 bg-amber-300 border-gray-300 rounded-xl w-full h-80 flex cursor-pointer relative overflow-hidden`}
+          >
             <div className="relative w-full rounded overflow-hidden group">
               <Image
                 className="object-contain rounded-2xl"
@@ -84,7 +85,9 @@ const ImageUploader = React.memo(
         ) : (
           <>
             {image ? (
-              <div className="group border-2 bg-red-500 border-gray-300 rounded-xl w-full h-80 flex cursor-pointer relative overflow-hidden">
+              <div
+                className={`group border-2 bg-red-500 border-gray-300 rounded-xl w-full h-80 flex cursor-pointer relative overflow-hidden`}
+              >
                 <div className="relative w-full rounded overflow-hidden group">
                   <Image
                     className="object-contain rounded-2xl"
@@ -147,7 +150,7 @@ const ImageUploader = React.memo(
             ) : (
               <div
                 onClick={handleClickUpload}
-                className="border-2 border-dashed border-gray-300 rounded-xl w-full h-80 flex items-center justify-center cursor-pointer hover:border-[#ffc596] transition"
+                className={`border-2 border-dashed border-gray-300 rounded-xl w-full h-80 flex items-center justify-center cursor-pointer hover:border-[#ffc596] transition`}
               >
                 <div className="flex flex-col items-center gap-3">
                   <svg

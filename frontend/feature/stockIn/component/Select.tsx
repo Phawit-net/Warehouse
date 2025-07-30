@@ -35,7 +35,11 @@ const Select = ({ options, value, onChange }: Props) => {
         onClick={() => setOpen((prev) => !prev)}
         className="flex w-full items-center gap-2 justify-between text-left text-gray-500 px-3 py-2 rounded-sm bg-[#fff0e4] focus:ring-2 focus:ring-[#ffc596]"
       >
-        {value ?? "เลือก"}
+        {value
+          ? `${options.find((o) => o.sale_mode === value)?.sale_mode} (${
+              options.find((o) => o.sale_mode === value)?.pack_size
+            })`
+          : "เลือก"}
         <svg
           xmlns="http://www.w3.org/2000/svg"
           fill="none"
@@ -60,7 +64,7 @@ const Select = ({ options, value, onChange }: Props) => {
               onClick={() => handleSelect(option.sale_mode)}
               className="px-3 py-2 flex items-center justify-start text-gray-500 hover:rounded hover:bg-gray-100 cursor-pointer"
             >
-              {option.sale_mode}
+              {`${option.sale_mode} (${option.pack_size})`}
             </li>
           ))}
         </ul>

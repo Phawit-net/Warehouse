@@ -6,17 +6,15 @@ type Props = {
   register: UseFormRegister<any>;
   placeholder?: string;
   margin?: number;
-  type: "text" | "number";
   isLabel?: boolean;
 };
 
-const TextInput = ({
+const TextArea = ({
   label,
   name,
   register,
   placeholder,
   margin = 5,
-  type = "text",
   isLabel = true,
 }: Props) => {
   return (
@@ -24,20 +22,14 @@ const TextInput = ({
       className={`flex flex-col mb-${margin} ${isLabel ? "gap-1" : "gap-0"}`}
     >
       {isLabel && <label className="text-md font-semibold">{label}</label>}
-      <input
-        type={type}
+      <textarea
+        className="p-2 rounded-sm bg-[#fff0e4] focus:outline-none text-gray-500 focus:ring-2 focus:ring-[#ffc596] min-h-[80px] max-h-[120px]"
         {...register(name)}
         placeholder={placeholder}
-        autoComplete="off"
-        className="p-2 rounded-sm bg-[#fff0e4] focus:outline-none text-gray-500 focus:ring-2 focus:ring-[#ffc596]"
-        onKeyPress={(e) => {
-          if (e.key === "Enter") {
-            e.preventDefault();
-          }
-        }}
+        rows={3}
       />
     </div>
   );
 };
 
-export default TextInput;
+export default TextArea;
