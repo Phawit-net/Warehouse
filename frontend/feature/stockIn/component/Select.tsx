@@ -2,15 +2,15 @@ import React, { useEffect, useRef, useState } from "react";
 
 type Props = {
   options: Variants[];
-  value?: string; // เพิ่ม value ที่เลือก
-  onChange?: (value: string) => void;
+  value?: number; // เพิ่ม value ที่เลือก
+  onChange?: (value: number) => void;
 };
 
 const Select = ({ options, value, onChange }: Props) => {
   const [open, setOpen] = useState<boolean>(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const handleSelect = (option: string) => {
+  const handleSelect = (option: number) => {
     onChange?.(option); // ส่งค่าที่เลือกกลับไปยัง react-hook-form
     setOpen(false);
   };
@@ -36,8 +36,8 @@ const Select = ({ options, value, onChange }: Props) => {
         className="flex w-full items-center gap-2 justify-between text-left text-gray-500 px-3 py-2 rounded-sm bg-[#fff0e4] focus:ring-2 focus:ring-[#ffc596]"
       >
         {value
-          ? `${options.find((o) => o.sale_mode === value)?.sale_mode} (${
-              options.find((o) => o.sale_mode === value)?.pack_size
+          ? `${options.find((o) => o.id === value)?.sale_mode} (${
+              options.find((o) => o.id === value)?.pack_size
             })`
           : "เลือก"}
         <svg
@@ -61,7 +61,7 @@ const Select = ({ options, value, onChange }: Props) => {
           {options.map((option) => (
             <li
               key={option.sale_mode}
-              onClick={() => handleSelect(option.sale_mode)}
+              onClick={() => handleSelect(option.id)}
               className="px-3 py-2 flex items-center justify-start text-gray-500 hover:rounded hover:bg-gray-100 cursor-pointer"
             >
               {`${option.sale_mode} (${option.pack_size})`}

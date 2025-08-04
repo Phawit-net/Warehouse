@@ -18,6 +18,7 @@ class Product(db.Model):
     def serialized_variants(self):
         return [
             {
+                "id": v.id,
                 "sku_suffix": v.sku_suffix,
                 "sale_mode": v.sale_mode,
                 "pack_size": v.pack_size,
@@ -66,15 +67,39 @@ class ProductImage(db.Model):
 class StockIn(db.Model):
     __tablename__ = 'stock_in'
     id = db.Column(db.Integer, primary_key=True)
-    product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False) #Id ของ Product
-    variant_id = db.Column(db.Integer, db.ForeignKey('product_variant.id'), nullable=False)
-
-    quantity = db.Column(db.Integer, nullable=False)  # จำนวนกล่อง/pack ที่รับเข้า
-    total_units = db.Column(db.Integer, nullable=False)  # จำนวนสินค้าจริงที่รับเข้า (ใช้สำหรับ update stock)
-    
-    image_filename = db.Column(db.String(255))  # ใบเสร็จ หรือไฟล์แนบ
+    product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
+    image_filename = db.Column(db.String(255))
     note = db.Column(db.Text)
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
+    # ความสัมพันธ์
     product = db.relationship("Product", backref="stock_in_entries")
+    entries = db.relationship("StockInEntry", backref="stock_in", cascade="all, delete-orphan", lazy="selectin")
+    @property
+    def total_unit(self):
+        total = 0
+        for entry in self.entries:
+            if entry.variant:
+                pack_size = entry.variant.pack_size
+            else:
+                pack_size = entry.custom_pack_size or 1
+            total += pack_size * entry.quantity
+        return total
+
+# ตารางเก็บข้อมูลประวัติการรับเข้าสินค้า ตามStock-in-id
+class StockInEntry(db.Model):
+    __tablename__ = 'stock_in_entry'
+    id = db.Column(db.Integer, primary_key=True)
+    stock_in_id = db.Column(db.Integer, db.ForeignKey('stock_in.id'), nullable=False)
+
+    # ถ้าเลือกจาก variant ที่มีอยู่
+    variant_id = db.Column(db.Integer, db.ForeignKey('product_variant.id'), nullable=True)
+
+    # ถ้าเป็น custom variant ที่ผู้ใช้ใส่เอง
+    custom_sale_mode = db.Column(db.String(50), nullable=True)  # เช่น doublePack
+    custom_pack_size = db.Column(db.Integer, nullable=True)     # เช่น 20
+
+    quantity = db.Column(db.Integer, nullable=False)  # จำนวนที่รับเข้าของ variant นั้นๆ
+
+    # ความสัมพันธ์
     variant = db.relationship("ProductVariant")

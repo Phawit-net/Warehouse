@@ -1,12 +1,20 @@
+"use client";
+
 import Link from "next/link";
 import React from "react";
+import { useRouter, usePathname } from "next/navigation";
 
 const MenuSideBar = () => {
+  const pathname = usePathname();
+  const segments = pathname.split("/").filter(Boolean);
+  const basePath = segments[0];
+  console.log(basePath);
+
   const menus = [
     { name: "Dashboard", path: "/" },
     { name: "Product", path: "/" },
     { name: "Order List", path: "/" },
-    { name: "Inventory", path: "/inventory" },
+    { name: "Inventory", path: "inventory" },
     { name: "Invoice", path: "/" },
     { name: "Analytics", path: "/" },
   ];
@@ -20,7 +28,13 @@ const MenuSideBar = () => {
           return (
             <li key={menu.name} className="my-3">
               <Link href={`${menu.path}`}>
-                <div className="flex px-4 py-2 gap-2 items-center hover:bg-[#fff0e4]">
+                <div
+                  className={`flex px-4 py-2 gap-2 items-center hover:bg-[#fff0e4] ${
+                    menu.path === basePath
+                      ? "bg-[#fff0e4] border-r-4 border-[#f49b50]"
+                      : " "
+                  }`}
+                >
                   <svg
                     xmlns="http://www.w3.org/2000/svg"
                     fill="none"

@@ -24,6 +24,22 @@ type Products = {
   variants: Variants[];
 };
 
+type StockIn = {
+  created_at: string;
+  entries: Entries[];
+  id: number;
+  image_filename: string;
+  note: string;
+  total_unit: number;
+};
+
+type Entries = {
+  pack_size: number;
+  quantity: number;
+  sale_mode: string;
+  total_unit: number;
+};
+
 type Pagination = {
   limit: number;
   page: number;
@@ -32,6 +48,14 @@ type Pagination = {
 };
 
 type Variants = {
+  id: number;
+  pack_size: number;
+  sale_mode: string;
+  selling_price: number;
+  sku_suffix: string;
+};
+
+type NewVariants = {
   pack_size: number;
   sale_mode: string;
   selling_price: number;

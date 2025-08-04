@@ -8,6 +8,7 @@ type Props = {
 const PrimaryButton = React.memo(({ text, handleClick }: Props) => {
   return (
     <button
+      type="button"
       className="bg-[#f49b50] p-2 px-3 text-white flex justify-center items-center justify-items-center gap-2 rounded-lg"
       onClick={handleClick}
     >

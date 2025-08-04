@@ -24,19 +24,39 @@ export const headerColumns: HeaderColumn[] = [
   { header: "Action", accessor: "action", type: "action", width: "[9%]" },
 ];
 
-// export const headerColumns: HeaderColumn[] = [
-//   { header: "", accessor: "image", type: "display" },
-//   { header: "SKU", accessor: "sku", type: "display" },
-//   { header: "ชื่อสินค้า", accessor: "name", type: "display" },
-//   { header: "หมวดหมู่", accessor: "category", type: "display" },
-//   { header: "หน่วยนับ", accessor: "unit", type: "display" },
-//   { header: "ราคาต้นทุน", accessor: "cost_price", type: "display" },
-//   { header: "รูปแบบการขาย", accessor: "sale_mode", type: "select" },
-//   { header: "จำนวนการขาย", accessor: "pack_size", type: "select" },
-//   { header: "ราคาขาย", accessor: "selling_price", type: "select" },
-//   { header: "จำนวนคงเหลือ", accessor: "stock", type: "select" },
-//   { header: "Action", accessor: "action", type: "action" },
-// ];
+export const stockInHeaderColumn: HeaderColumn[] = [
+  {
+    header: "วันที่รับเข้า",
+    accessor: "created_at",
+    type: "display",
+    width: "[5%]",
+  },
+  {
+    header: "จำนวนรับเข้า",
+    accessor: "total_unit",
+    type: "display",
+    width: "[5%]",
+  },
+  {
+    header: "รายการรับเข้า",
+    accessor: "entries",
+    type: "display",
+    width: "[5%]",
+  },
+  {
+    header: "หลักฐาน",
+    accessor: "image",
+    type: "image",
+    width: "[5%]",
+  },
+  {
+    header: "หมายเหตุเพิ่มเติม",
+    accessor: "note",
+    type: "display",
+    width: "[5%]",
+  },
+  { header: "Action", accessor: "action", type: "action", width: "[9%]" },
+];
 
 export const productData: TableData[] = [
   {

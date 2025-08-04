@@ -17,7 +17,6 @@ import { ControllerRenderProps } from "react-hook-form";
 type Props = {
   label: string;
   field: ControllerRenderProps<any, string>;
-  name: string;
   margin?: number;
   isLabel?: boolean;
 };

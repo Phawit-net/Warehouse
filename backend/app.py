@@ -4,8 +4,10 @@ from flask_sqlalchemy import SQLAlchemy
 import os
 from model import db
 from routes.inventory_routes import inventory_bp
+from routes.stockin_routes import stockin_bp
 
 app = Flask(__name__)
+app.config["DEBUG"] = True
 CORS(app, resources={r"/api/*": {"origins": "http://localhost:3000"}}, supports_credentials=True)  # ให้ frontend (ต่าง origin) เรียกได้
 
 # สร้าง path สำหรับไฟล์ .db เก็บในโปรเจกต์
@@ -18,6 +20,8 @@ db.init_app(app)
 
 # register routes
 app.register_blueprint(inventory_bp)
+app.register_blueprint(stockin_bp)
+
 with app.app_context():
     db.create_all()
 

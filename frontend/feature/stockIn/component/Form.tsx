@@ -1,5 +1,5 @@
 import { DatePicker } from "@/components/DatePicker";
-import React, { useState } from "react";
+import React, { useCallback, useState } from "react";
 import {
   SubmitHandler,
   Controller,
@@ -13,28 +13,35 @@ import { TimerOff } from "lucide-react";
 import ToggleSwitchCard from "./ToggleSwitchCard";
 import ImageUploader from "@/components/ImageUploader";
 import TextArea from "@/components/TextArea";
+import axios from "axios";
+import { formatISO } from "date-fns";
+
 type Props = {
   variantsOption: Variants[];
+  productId: number;
+  onSuccess: () => void; // เพิ่ม props นี้
 };
 
-type FormData = {
-  date: Date | undefined;
-  receiving: {
-    variant: string;
+type StockInForm = {
+  created_at: Date;
+  note: string;
+  entries: {
+    variant_id: number;
     quantity: number;
   }[];
-  custom_variant?: string;
+  custom_sale_mode?: string;
   custom_quantity?: number;
-  custom_packSize?: number;
+  custom_pack_size?: number;
   order_image: File | null;
 };
 
-const Form = ({ variantsOption }: Props) => {
-  const [selectSwitch, setSelectSwitch] = useState(false);
+const Form = ({ variantsOption, productId, onSuccess }: Props) => {
+  const [selectSwitch, setSelectSwitch] = useState(true);
   const [manualSwitch, setManualSwitch] = useState(false);
   const [orderPreviewUrl, setOrderPreviewUrl] = useState<string | null>(null);
 
   const {
+    reset,
     register,
     handleSubmit,
     control,
@@ -42,12 +49,12 @@ const Form = ({ variantsOption }: Props) => {
     getValues,
     setValue,
     formState: { errors },
-  } = useForm<FormData>({
+  } = useForm<StockInForm>({
     defaultValues: {
-      date: new Date(),
-      receiving: [
+      created_at: new Date(),
+      entries: [
         {
-          variant: variantsOption[0]?.sale_mode,
+          variant_id: variantsOption[0]?.id,
         },
       ],
       order_image: null,
@@ -56,45 +63,65 @@ const Form = ({ variantsOption }: Props) => {
 
   const { fields, append, remove } = useFieldArray({
     control,
-    name: "receiving",
+    name: "entries",
   });
 
-  const onSubmit: SubmitHandler<FormData> = (data) => {
-    const enrichedReceiving = data.receiving.map((item) => {
-      const matchedVariant = variantsOption.find(
-        (v) => v.sale_mode === item.variant
-      );
-
-      return {
-        ...item,
-        packSize: matchedVariant?.pack_size || null, // หรือ default เป็น 1 ก็ได้
-      };
-    });
-
-    const finalData = {
-      ...data,
-      receiving: enrichedReceiving,
-    };
-
-    console.log("📦 finalData =>", finalData);
-  };
-
-  const selectedVariants = watch("receiving")?.map((r) => r.variant) || [];
+  const selectedVariants = watch("entries")?.map((r) => r.variant_id) || [];
   const availableOptions = variantsOption.filter(
-    (variant) => !selectedVariants.includes(variant.sale_mode)
+    (variant) => !selectedVariants.includes(variant.id)
   );
 
   const orderImageFile = watch("order_image");
 
+  const buildFormData = useCallback(
+    (data: StockInForm): FormData => {
+      const formData = new FormData();
+
+      const stockInEntries = data.entries;
+      if (manualSwitch) {
+        console.log("IN");
+        stockInEntries.push({
+          custom_sale_mode: data.custom_sale_mode,
+          custom_pack_size: data.custom_pack_size ?? 1,
+          quantity: data.custom_quantity ?? 0,
+        } as any);
+      }
+
+      formData.append("product_id", productId.toString());
+      formData.append("created_at", formatISO(data.created_at));
+      formData.append("note", data.note);
+      if (data.order_image) {
+        formData.append("order_image", data.order_image);
+      }
+      formData.append("entries", JSON.stringify(stockInEntries));
+      return formData;
+    },
+    [manualSwitch]
+  );
+
+  const onSubmit: SubmitHandler<StockInForm> = async (data: StockInForm) => {
+    console.log("submit");
+    const formData = buildFormData(data);
+
+    try {
+      await axios.post("http://localhost:5001/api/stock-in", formData);
+      if (onSuccess) onSuccess();
+      reset();
+    } catch (error) {
+      console.error("❌ Upload failed:", error);
+      // TODO: Add toast / error UI
+    }
+  };
+
   return (
-    <form onSubmit={handleSubmit(onSubmit)}>
+    <form id="add-stockin-form" onSubmit={handleSubmit(onSubmit)}>
       <div className="grid grid-cols-[1fr_1fr] gap-3">
         <div className="flex flex-col">
           <Controller
-            name="date"
+            name="created_at"
             control={control}
             render={({ field }) => (
-              <DatePicker label="วันที่รับเข้า" name="date" field={field} />
+              <DatePicker label="วันที่รับเข้า" field={field} />
             )}
           />
           <div className="flex flex-col gap-1">
@@ -111,14 +138,13 @@ const Form = ({ variantsOption }: Props) => {
                 <>
                   {fields.map((field, index) => {
                     const otherSelected =
-                      watch("receiving")?.map((r) => r.variant) || [];
+                      watch("entries")?.map((r) => r.variant_id) || [];
                     const currentValue = getValues(
-                      `receiving.${index}.variant`
+                      `entries.${index}.variant_id`
                     );
                     const selectOptions = variantsOption.filter(
                       (v) =>
-                        !otherSelected.includes(v.sale_mode) ||
-                        v.sale_mode === currentValue
+                        !otherSelected.includes(v.id) || v.id === currentValue
                     );
 
                     return (
@@ -131,7 +157,7 @@ const Form = ({ variantsOption }: Props) => {
                         } gap-3 `}
                       >
                         <Controller
-                          name={`receiving.${index}.variant`}
+                          name={`entries.${index}.variant_id`}
                           control={control}
                           render={({ field }) => (
                             <Select
@@ -146,7 +172,7 @@ const Form = ({ variantsOption }: Props) => {
                           isLabel={false}
                           margin={0}
                           placeholder="จำนวน"
-                          name={`receiving.${index}.quantity`}
+                          name={`entries.${index}.quantity`}
                           register={register}
                           type="number"
                         />
@@ -186,7 +212,7 @@ const Form = ({ variantsOption }: Props) => {
                           const nextOption = availableOptions[0]; // ตัวแรกที่ยังไม่ได้เลือก
                           if (nextOption && nextOption.sale_mode) {
                             append({
-                              variant: nextOption.sale_mode,
+                              variant_id: nextOption.id,
                               quantity: 0,
                             });
                           }
@@ -215,7 +241,7 @@ const Form = ({ variantsOption }: Props) => {
                 <div className="grid grid-cols-[1fr_1fr_1fr] gap-3">
                   <TextInput
                     placeholder="ชื่อ"
-                    name="custom_variant"
+                    name="custom_sale_mode"
                     label="ชื่อรูปแบบ"
                     margin={0}
                     register={register}
@@ -231,7 +257,7 @@ const Form = ({ variantsOption }: Props) => {
                   />
                   <TextInput
                     placeholder="ขนาดแพ็ค"
-                    name="custom_packSize"
+                    name="custom_pack_size"
                     label="จำนวนชิ้นต่อหน่วย"
                     register={register}
                     margin={0}
@@ -259,7 +285,6 @@ const Form = ({ variantsOption }: Props) => {
             register={register}
             placeholder=""
           />
-          <input type="submit" />
         </div>
       </div>
     </form>

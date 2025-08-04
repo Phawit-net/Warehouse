@@ -2,7 +2,6 @@
 import React, { useEffect, useState } from "react";
 import IconsButton from "@/components/IconsButton";
 import Image from "next/image";
-import axios from "axios";
 
 type Props = {
   headerColumns: HeaderColumn[];

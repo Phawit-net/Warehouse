@@ -38,6 +38,7 @@ export const Pagination = React.memo(
         </div>
         <div className="flex items-center justify-center gap-2">
           <button
+            type="button"
             onClick={() => onPageChange(currentPage - 1)}
             disabled={currentPage === 1}
             className="p-1.5 rounded border text-sm cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
@@ -60,6 +61,7 @@ export const Pagination = React.memo(
 
           {pages.map((page) => (
             <button
+              type="button"
               key={page}
               onClick={() => onPageChange(page)}
               className={`px-3 py-2 rounded text-sm cursor-pointer
@@ -71,6 +73,7 @@ export const Pagination = React.memo(
           ))}
 
           <button
+            type="button"
             onClick={() => onPageChange(currentPage + 1)}
             disabled={currentPage === totalPages}
             className="p-1.5 rounded border text-sm cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"

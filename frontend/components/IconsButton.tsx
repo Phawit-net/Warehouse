@@ -17,6 +17,7 @@ const colorMap = {
 const IconsButton = ({ color, type, handleClick, onMouseEnter }: Props) => {
   return (
     <button
+      type="button"
       className={`${colorMap[color]} w-fit rounded-md p-1 cursor-pointer`}
       onMouseEnter={onMouseEnter}
       onClick={handleClick}

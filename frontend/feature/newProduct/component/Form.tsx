@@ -16,7 +16,7 @@ type ProductForm = {
   unit: string;
   cost_price: number;
   stock: number;
-  variants: Variants[]; // 👈 เป็น array ของรูปแบบการขาย
+  variants: NewVariants[]; // 👈 เป็น array ของรูปแบบการขาย
 };
 
 type Props = {

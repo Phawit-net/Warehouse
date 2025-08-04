@@ -11,6 +11,7 @@ interface ToggleSwitchProps {
 export default function ToggleSwitch({ enabled, onChange }: ToggleSwitchProps) {
   return (
     <button
+      type="button"
       onClick={() => onChange(!enabled)}
       className={`relative inline-flex h-5 w-9 items-center rounded-full transition-colors duration-200 ${
         enabled ? "bg-[#f49b50]" : "bg-gray-300"
