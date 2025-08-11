@@ -8,15 +8,11 @@ const MenuSideBar = () => {
   const pathname = usePathname();
   const segments = pathname.split("/").filter(Boolean);
   const basePath = segments[0];
-  console.log(basePath);
 
   const menus = [
     { name: "Dashboard", path: "/" },
-    { name: "Product", path: "/" },
-    { name: "Order List", path: "/" },
-    { name: "Inventory", path: "inventory" },
-    { name: "Invoice", path: "/" },
-    { name: "Analytics", path: "/" },
+    { name: "Inventory", path: "/inventory" },
+    { name: "Sale Channel", path: "/sale-channel" },
   ];
   return (
     <aside className=" h-full w-1/9 min-w-[100px] border-r-1 border-gray-200">

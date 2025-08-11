@@ -40,6 +40,8 @@ const Form = ({ variantsOption, productId, onSuccess }: Props) => {
   const [manualSwitch, setManualSwitch] = useState(false);
   const [orderPreviewUrl, setOrderPreviewUrl] = useState<string | null>(null);
 
+  const activeVariantsOption = variantsOption.filter((v) => v.is_active);
+
   const {
     reset,
     register,
@@ -54,7 +56,7 @@ const Form = ({ variantsOption, productId, onSuccess }: Props) => {
       created_at: new Date(),
       entries: [
         {
-          variant_id: variantsOption[0]?.id,
+          variant_id: activeVariantsOption[0]?.id,
         },
       ],
       order_image: null,
@@ -67,7 +69,7 @@ const Form = ({ variantsOption, productId, onSuccess }: Props) => {
   });
 
   const selectedVariants = watch("entries")?.map((r) => r.variant_id) || [];
-  const availableOptions = variantsOption.filter(
+  const availableOptions = activeVariantsOption.filter(
     (variant) => !selectedVariants.includes(variant.id)
   );
 
@@ -79,7 +81,6 @@ const Form = ({ variantsOption, productId, onSuccess }: Props) => {
 
       const stockInEntries = data.entries;
       if (manualSwitch) {
-        console.log("IN");
         stockInEntries.push({
           custom_sale_mode: data.custom_sale_mode,
           custom_pack_size: data.custom_pack_size ?? 1,
@@ -100,18 +101,26 @@ const Form = ({ variantsOption, productId, onSuccess }: Props) => {
   );
 
   const onSubmit: SubmitHandler<StockInForm> = async (data: StockInForm) => {
-    console.log("submit");
+    console.log("submit", data);
     const formData = buildFormData(data);
-
     try {
       await axios.post("http://localhost:5001/api/stock-in", formData);
-      if (onSuccess) onSuccess();
       reset();
+      onSuccess();
     } catch (error) {
       console.error("❌ Upload failed:", error);
       // TODO: Add toast / error UI
     }
   };
+
+  const onImageChange = useCallback(
+    (file: File | null) => setValue("order_image", file),
+    [setValue]
+  );
+
+  const onImageRemove = useCallback(() => {
+    setOrderPreviewUrl(null);
+  }, []);
 
   return (
     <form id="add-stockin-form" onSubmit={handleSubmit(onSubmit)}>
@@ -142,7 +151,7 @@ const Form = ({ variantsOption, productId, onSuccess }: Props) => {
                     const currentValue = getValues(
                       `entries.${index}.variant_id`
                     );
-                    const selectOptions = variantsOption.filter(
+                    const selectOptions = activeVariantsOption.filter(
                       (v) =>
                         !otherSelected.includes(v.id) || v.id === currentValue
                     );
@@ -272,11 +281,9 @@ const Form = ({ variantsOption, productId, onSuccess }: Props) => {
           <ImageUploader
             label="อัปโหลดใบส่งของ/ใบสั่งซื้อ"
             image={orderImageFile}
-            onChange={(file: File | null) => setValue("order_image", file)}
+            onChange={onImageChange}
             imagePreview={orderPreviewUrl || ""}
-            onRemovePreview={() => {
-              setOrderPreviewUrl(null);
-            }}
+            onRemovePreview={onImageRemove}
           />
           <TextArea
             name="note"

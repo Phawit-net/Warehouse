@@ -1,5 +1,5 @@
 from flask import abort, Blueprint, jsonify, request, send_from_directory
-from model import db, Product, ProductVariant, ProductImage
+from model import Sale, StockIn, StockInEntry, db, Product, ProductVariant, ProductImage
 from werkzeug.utils import secure_filename
 from sqlalchemy.orm import selectinload
 from sqlalchemy.exc import SQLAlchemyError
@@ -7,7 +7,7 @@ import os
 import json
 import uuid
 
-inventory_bp = Blueprint('inventory_bp', __name__, url_prefix='/api/inventory')
+product_bp = Blueprint('product_bp', __name__, url_prefix='/api/inventory')
 
 ALLOWED_EXTENSIONS = {'png', 'jpg', 'jpeg', 'gif','webp'}
 UPLOAD_FOLDER = os.path.join(os.getcwd(), 'uploads')  # สมมุติว่าอัปโหลดไว้ที่นี่
@@ -36,7 +36,7 @@ def delete_image_file(filename):
 
 # API - ที่เกี่ยวกับ PRODUCTS ทั้งหมด
 # 1. API GET - get all product
-@inventory_bp.route('/', methods=['GET'])
+@product_bp.route('/', methods=['GET'])
 def get_all_products():
     try:
         page = int(request.args.get('page', 1))
@@ -90,7 +90,7 @@ def get_all_products():
 
 
 # 2. API POST - add new product
-@inventory_bp.route('/', methods=['POST'])
+@product_bp.route('/', methods=['POST'])
 def create_product():
     data = request.form
     main_image = request.files.get("main_image")
@@ -120,7 +120,7 @@ def create_product():
                 sale_mode=v["sale_mode"],
                 pack_size=v["pack_size"],
                 selling_price=v["selling_price"],
-                is_for_sale=v.get("is_for_sale", True)
+                is_active = v["is_active"]
             )
             new_product.variants.append(variant)
         db.session.add(new_product)
@@ -152,7 +152,7 @@ def create_product():
     
     
 # 3. API File serving - serve image when call API path from front-end
-@inventory_bp.route('/uploads/<filename>')
+@product_bp.route('/uploads/<filename>')
 def uploaded_file(filename):
     # ✅ ป้องกัน path traversal เช่น "../../etc/passwd"
     filename = secure_filename(filename)
@@ -167,12 +167,15 @@ def uploaded_file(filename):
 
 
 # 4. API DELETE - delete product + relationship of product
-@inventory_bp.route('/<int:product_id>', methods=['DELETE'])
+@product_bp.route('/<int:product_id>', methods=['DELETE'])
 def delete_product(product_id):
     try:
         product = Product.query.get(product_id)
         if not product:
             return jsonify({"error": "ไม่พบสินค้า"}), 404
+
+        # 🔁 ลบ stock-in ทั้งหมดของ product นี้
+        StockIn.query.filter_by(product_id=product.id).delete(synchronize_session=False)
 
         # 🔁 ลบภาพทั้งหมดของสินค้านี้ (ทั้ง DB และไฟล์)
         for img in product.images:
@@ -197,7 +200,7 @@ def delete_product(product_id):
         return jsonify({"error": str(e)}), 500
     
 # 5. API GET - get product by ID
-@inventory_bp.route('/<int:product_id>', methods=['GET'])
+@product_bp.route('/<int:product_id>', methods=['GET'])
 def get_product_by_id(product_id):
     try:
         product = Product.query.get_or_404(product_id)
@@ -224,7 +227,7 @@ def get_product_by_id(product_id):
         return jsonify({"error": "เกิดข้อผิดพลาดขณะดึงข้อมูลสินค้า"}), 500
 
 # 6. API Update product - change specific product data by ID
-@inventory_bp.route('/<int:product_id>', methods=['PATCH'])
+@product_bp.route('/<int:product_id>', methods=['PATCH'])
 def update_product(product_id):
     try:
         product = Product.query.get_or_404(product_id)
@@ -246,7 +249,7 @@ def update_product(product_id):
                 sale_mode=v["sale_mode"],
                 pack_size=v["pack_size"],
                 selling_price=v["selling_price"],
-                is_for_sale=v.get("is_for_sale", True)
+                is_active=v["is_active"]
             ) for v in variants_data
         ])
 
@@ -291,4 +294,44 @@ def update_product(product_id):
 
     except Exception as e:
         db.session.rollback()
+        return jsonify({"error": f"❌ Unexpected error: {str(e)}"}), 500
+
+# 7. API Checking Hard Delete in Edit Product
+@product_bp.route('/variant/<int:variant_id>', methods=['DELETE'])
+def hard_delete_variant(variant_id):
+    """
+    API สำหรับลบ ProductVariant ถาวร (Hard Delete)
+    - มีการตรวจสอบว่ามีข้อมูล StockIn หรือ SaleOrder ที่อ้างอิงอยู่หรือไม่
+    - หากพบ จะไม่อนุญาตให้ลบ
+    """
+    try:
+        # 1. ค้นหา ProductVariant ที่ต้องการลบ
+        variant = db.session.get(ProductVariant, variant_id)
+        if not variant:
+            return jsonify({"error": "❌ ProductVariant not found"}), 404
+
+        # 2. ⭐ ตรวจสอบความเกี่ยวข้องกับ StockIn
+        related_stockinEntry = db.session.query(StockInEntry).filter_by(variant_id=variant_id).first()
+        if related_stockinEntry:
+            return jsonify({
+                "error": "❌ Cannot delete variant. It is linked to existing stock-in records."
+            }), 409 # HTTP 409 Conflict
+
+        # 3. ⭐ ตรวจสอบความเกี่ยวข้องกับ Sale
+        related_saleorder = db.session.query(Sale).filter_by(variant_id=variant_id).first()
+        if related_saleorder:
+            return jsonify({
+                "error": "❌ Cannot delete variant. It is linked to existing sales orders."
+            }), 409 # HTTP 409 Conflict
+
+        # 4. หากไม่มีข้อมูลเกี่ยวข้อง จึงดำเนินการลบ
+        db.session.delete(variant)
+        db.session.commit()
+        
+        return jsonify({"message": f"✅ ProductVariant {variant_id} deleted permanently"}), 200
+        
+    except SQLAlchemyError as e:
+        db.session.rollback()
+        return jsonify({"error": f"❌ Database error: {str(e)}"}), 500
+    except Exception as e:
         return jsonify({"error": f"❌ Unexpected error: {str(e)}"}), 500

@@ -26,6 +26,10 @@ def create_stockin():
         product_id = data.get("product_id")
         if not product_id:
             return jsonify({"error": "❌ Missing product_id"}), 400
+        product = db.session.get(Product, product_id)
+        if not product:
+            return jsonify({"error": "❌ Product not found"}), 404
+
         
         # ✅ แปลง created_at เป็น datetime object
         created_at_str = data.get("created_at")
@@ -69,40 +73,53 @@ def create_stockin():
             if not variant_id and (not custom_sale_mode or not custom_pack_size):
                 return jsonify({"error": "❌ Each entry must have either a variant_id or both custom_sale_mode and custom_pack_size"}), 400
 
+            # ⭐ ส่วนที่แก้ไข: ดึง pack_size จากฐานข้อมูล
+            pack_size_at_receipt  = 0
+            if variant_id:
+                variant = db.session.get(ProductVariant, variant_id)
+                if not variant:
+                    return jsonify({"error": f"❌ Variant with id {variant_id} not found"}), 404
+                pack_size_at_receipt  = variant.pack_size
+            else:
+                pack_size_at_receipt  = custom_pack_size
+
             entry = StockInEntry(
                 variant_id=variant_id,
                 quantity=quantity,
                 custom_sale_mode=custom_sale_mode,
                 custom_pack_size=custom_pack_size,
+                pack_size_at_receipt=pack_size_at_receipt,
             )
             new_stockin.entries.append(entry)
 
         db.session.add(new_stockin)
         db.session.commit()
 
-        product = db.session.get(Product, product_id)
-        if not product:
-            return jsonify({"error": "❌ Product not found"}), 404
 
-        # ✅ STEP 2: ดึง StockInEntry ทั้งหมดของสินค้านี้
-        all_entries = (
-            db.session.query(StockInEntry)
-            .join(StockIn)
-            .filter(StockIn.product_id == product_id)
-            .all()
-        )
+        # # ✅ STEP 2: ดึง StockInEntry ทั้งหมดของสินค้านี้
+        # all_entries = (
+        #     db.session.query(StockInEntry)
+        #     .join(StockIn)
+        #     .filter(StockIn.product_id == product_id)
+        #     .all()
+        # )
 
-        # ✅ STEP 3: รวม total_unit = quantity * pack_size
+        # # ✅ STEP 3: รวม total_unit = quantity * pack_size
+        # total_stock = 0
+        # for entry in all_entries:
+        #     if entry.variant:
+        #         pack_size = entry.variant.pack_size
+        #     else:
+        #         pack_size = entry.custom_pack_size or 0
+        #     total_stock += (pack_size or 0) * entry.quantity
+
         total_stock = 0
-        for entry in all_entries:
-            if entry.variant:
-                pack_size = entry.variant.pack_size
-            else:
-                pack_size = entry.custom_pack_size or 0
-            total_stock += (pack_size or 0) * entry.quantity
+        for entry in new_stockin.entries:
+            # ใช้ pack_size_at_receipt ที่บันทึกไว้
+            total_stock += entry.pack_size_at_receipt * entry.quantity
 
         # ✅ STEP 4: อัปเดต stock ใน Product
-        product.stock = total_stock
+        product.stock += total_stock # ✅ แก้ไข: ควรใช้ += เพื่อเพิ่ม stock ไม่ใช่กำหนดค่าใหม่
         db.session.commit()
 
         return jsonify({"message": "✅ StockIn created successfully", "stockin_id": new_stockin.id}), 201
@@ -126,26 +143,24 @@ def get_stockins_by_product(product_id):
             .order_by(StockIn.created_at.desc())
             .all()
         )
-
         result = []
         for stockin in stockins:
             entries_data = []
 
             for entry in stockin.entries:
                 # คำนวณ pack_size (ถ้าใช้ variant เดิม หรือ custom)
+                pack_size_at_receipt  = entry.pack_size_at_receipt
                 if entry.variant:
-                    pack_size = entry.variant.pack_size
                     sale_mode = entry.variant.sale_mode
                 else:
-                    pack_size = entry.custom_pack_size
                     sale_mode = entry.custom_sale_mode
 
-                total_unit = pack_size * entry.quantity if pack_size else 0
+                total_unit = pack_size_at_receipt  * entry.quantity if pack_size_at_receipt  else 0
 
                 entries_data.append({
                     "quantity": entry.quantity,
                     "sale_mode": sale_mode,
-                    "pack_size": pack_size,
+                    "pack_size": pack_size_at_receipt ,
                     "total_unit": total_unit
                 })
 
@@ -187,31 +202,36 @@ def delete_stock_in(stock_in_id):
         stock_in = StockIn.query.get(stock_in_id)
         if not stock_in:
             return jsonify({"error": "StockIn not found"}), 404
+        
+        # ดึง product ก่อนที่จะลบ stock_in
+        product = stock_in.product
+        if not product:
+            return jsonify({"error": "❌ Associated Product not found"}), 404
 
-        # ดึง StockInEntries ที่เกี่ยวข้อง
-        stock_in_entries = stock_in.entries  # preload ได้เพราะ lazy='selectin'
-
-        for item in stock_in_entries:
-            # ดึง product ผ่าน stock_in
-            product = stock_in.product
-            if product:
-                # คำนวณจำนวน unit ที่ต้องลบ
-                if item.variant:
-                    pack_size = item.variant.pack_size
-                else:
-                    pack_size = item.custom_pack_size or 1
-                amount = pack_size * item.quantity
-
-                product.stock -= amount
-
+       # คำนวณจำนวน unit ที่ต้องลบออกจาก stock
+        amount_to_deduct = 0
+        for item in stock_in.entries:
+            # ⭐ แก้ไข: ใช้ pack_size_at_receipt ที่บันทึกไว้
+            pack_size = item.pack_size_at_receipt
+            amount_to_deduct += pack_size * item.quantity
+        
+        # อัปเดต stock ใน Product ก่อนลบ
+        product.stock -= amount_to_deduct
+        
         # ลบ StockIn หลัก ซึ่งจะลบ StockInEntry ด้วย เพราะใช้ cascade='all, delete-orphan'
         db.session.delete(stock_in)
         db.session.commit()
 
-        return jsonify({"message": "StockIn deleted and stock adjusted"}), 200
+        return jsonify({"message": "✅ StockIn deleted and stock adjusted"}), 200
 
     except SQLAlchemyError as e:
         db.session.rollback()
-        print("❌ DELETE ERROR:")
+        # ควร import traceback
+        import traceback
         traceback.print_exc()
-        return jsonify({"error": str(e)}), 500
+        return jsonify({"error": f"❌ Database error: {str(e)}"}), 500
+    except Exception as e:
+        # ควร import traceback
+        import traceback
+        traceback.print_exc()
+        return jsonify({"error": f"❌ Unexpected error: {str(e)}"}), 500

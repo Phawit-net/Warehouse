@@ -1,5 +1,5 @@
 "use client";
-import Form from "@/feature/newProduct/component/Form";
+import Form from "@/feature/product/component/Form";
 import useSWR from "swr";
 import { fetcher } from "@/lib/fetcher";
 import { useParams } from "next/navigation";

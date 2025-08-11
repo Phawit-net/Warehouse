@@ -1,27 +1,24 @@
 export const headerColumns: HeaderColumn[] = [
-  { header: "image", accessor: "images", type: "image", width: "[5%]" },
-  { header: "SKU", accessor: "sku", type: "display", width: "[9%]" },
-  { header: "ชื่อสินค้า", accessor: "name", type: "display", width: "[41%]" },
+  { header: "image", accessor: "images", type: "image" },
+  { header: "SKU", accessor: "sku", type: "display" },
+  { header: "ชื่อสินค้า", accessor: "name", type: "display" },
   {
     header: "หมวดหมู่",
     accessor: "category",
     type: "display",
-    width: "[9%]",
   },
-  { header: "หน่วยนับ", accessor: "unit", type: "display", width: "[9%]" },
+  { header: "หน่วยนับ", accessor: "unit", type: "display" },
   {
     header: "ราคาต้นทุน",
     accessor: "cost_price",
     type: "display",
-    width: "[9%]",
   },
   {
     header: "จำนวนคงเหลือ",
     accessor: "stock",
     type: "display",
-    width: "[9%]",
   },
-  { header: "Action", accessor: "action", type: "action", width: "[9%]" },
+  { header: "Action", accessor: "action", type: "action" },
 ];
 
 export const stockInHeaderColumn: HeaderColumn[] = [
@@ -29,56 +26,109 @@ export const stockInHeaderColumn: HeaderColumn[] = [
     header: "วันที่รับเข้า",
     accessor: "created_at",
     type: "display",
-    width: "[5%]",
   },
   {
     header: "จำนวนรับเข้า",
     accessor: "total_unit",
     type: "display",
-    width: "[5%]",
   },
   {
     header: "รายการรับเข้า",
     accessor: "entries",
     type: "display",
-    width: "[5%]",
   },
   {
     header: "หลักฐาน",
     accessor: "image",
     type: "image",
-    width: "[5%]",
   },
   {
     header: "หมายเหตุเพิ่มเติม",
     accessor: "note",
     type: "display",
-    width: "[5%]",
   },
-  { header: "Action", accessor: "action", type: "action", width: "[9%]" },
+  { header: "Action", accessor: "action", type: "action" },
 ];
 
-export const productData: TableData[] = [
+export const salesChannelHeaderColumn: HeaderColumn[] = [
   {
-    name: "Vitamin C",
-    sku: "001-1PC",
-    category: "Vitamin",
-    unit: "กล่อง",
-    saleType: "box",
-    saleAmount: 100,
-    costPrice: 2000,
-    sellPrice: 35000,
-    remainingAmount: 10,
+    header: "ชื่อช่องทาง",
+    accessor: "channel_name",
+    type: "display",
   },
   {
-    name: "Vitamin B",
-    sku: "002-S",
-    category: "Vitamin",
-    unit: "กล่อง",
-    saleType: "single",
-    saleAmount: 1,
-    costPrice: 15,
-    sellPrice: 50,
-    remainingAmount: 10,
+    header: "ค่าธรรมเนียมการขาย (%)",
+    accessor: "commission_percent",
+    type: "display",
   },
+  {
+    header: "ค่าธุรกรรมการชำระเงิน (%)",
+    accessor: "transaction_percent",
+    type: "display",
+  },
+  { header: "", accessor: "action", type: "action" },
+];
+
+export const salesOrderHeaderColumn: HeaderColumn[] = [
+  {
+    header: "วันที่ขาย",
+    accessor: "sale_date",
+    type: "display",
+  },
+  {
+    header: "ชื่อลูกค้า",
+    accessor: "customer_name",
+    type: "display",
+  },
+  {
+    header: "ช่องทาง",
+    accessor: "channel_name_at_sale",
+    type: "display",
+  },
+  {
+    header: "ขนาดการขาย",
+    accessor: "pack_size_at_sale",
+    type: "display",
+  },
+  {
+    header: "จำนวน",
+    accessor: "quantity",
+    type: "display",
+  },
+  {
+    header: "หน่วย",
+    accessor: "sale_mode_at_sale",
+    type: "display",
+  },
+  {
+    header: "ราคาขายสุทธิ",
+    accessor: "total_price",
+    type: "display",
+  },
+  {
+    header: "ส่วนลดร้าน",
+    accessor: "shop_discount",
+    type: "display",
+  },
+  {
+    header: "ส่วนลด Platform",
+    accessor: "platform_discount",
+    type: "display",
+  },
+  {
+    header: "ส่วนลด Coin",
+    accessor: "coin_discount",
+    type: "display",
+  },
+  {
+    header: "ยอดลูกค้าชำระ",
+    accessor: "customer_pay",
+    type: "display",
+  },
+  {
+    header: "ยอดรับจริง",
+    accessor: "seller_receive",
+    type: "display",
+  },
+  { header: "จัดการ", accessor: "action", type: "action" },
 ];

@@ -1,4 +1,4 @@
-import { Select } from "@/feature/newProduct/component/Select";
+import { Select } from "@/feature/product/component/Select";
 import React, { useMemo } from "react";
 
 interface Props {

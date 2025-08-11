@@ -3,8 +3,10 @@ from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 import os
 from model import db
-from routes.inventory_routes import inventory_bp
+from routes.product_routes import product_bp
 from routes.stockin_routes import stockin_bp
+from routes.sale_routes import sale_bp
+from routes.channel_routes import channel_bp
 
 app = Flask(__name__)
 app.config["DEBUG"] = True
@@ -19,8 +21,10 @@ app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
 db.init_app(app)
 
 # register routes
-app.register_blueprint(inventory_bp)
+app.register_blueprint(product_bp)
 app.register_blueprint(stockin_bp)
+app.register_blueprint(sale_bp)
+app.register_blueprint(channel_bp)
 
 with app.app_context():
     db.create_all()

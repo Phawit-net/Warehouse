@@ -1,4 +1,4 @@
-import Form from "@/feature/newProduct/component/Form";
+import Form from "@/feature/product/component/Form";
 
 const AddPage = () => {
   return (

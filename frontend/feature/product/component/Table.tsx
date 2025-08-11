@@ -9,9 +9,10 @@ import { fetcher } from "@/lib/fetcher";
 type Props = {
   headerColumns: HeaderColumn[];
   data: TableData[];
+  handleDelete: (id: number) => Promise<void>;
 };
 
-const Table = ({ headerColumns, data }: Props) => {
+const Table = ({ headerColumns, data, handleDelete }: Props) => {
   const router = useRouter();
   const pathname = usePathname();
   const [detailId, setDetailId] = useState<string>("");
@@ -143,11 +144,11 @@ const Table = ({ headerColumns, data }: Props) => {
                                 router.push(`${pathname}/edit/${row.id}`);
                               }}
                             />
-                            {/* <IconsButton
+                            <IconsButton
                               type="delete"
                               color="red"
-                              handleClick={() => onDelete(row.id)}
-                            /> */}
+                              handleClick={() => handleDelete(row.id)}
+                            />
                             <IconsButton
                               type="import"
                               color="blue"
@@ -158,7 +159,16 @@ const Table = ({ headerColumns, data }: Props) => {
                                 router.push(`${pathname}/stock-in/${row.id}`);
                               }}
                             />
-                            <IconsButton type="sale" color="red" />
+                            <IconsButton
+                              type="sale"
+                              color="red"
+                              onMouseEnter={() => prefetchProduct(row.id)}
+                              handleClick={(e: {
+                                stopPropagation: () => void;
+                              }) => {
+                                router.push(`${pathname}/sale/${row.id}`);
+                              }}
+                            />
                           </div>
                         </div>
                       )}

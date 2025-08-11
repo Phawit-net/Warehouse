@@ -6,7 +6,7 @@ import axios from "axios";
 import AddButton from "@/components/PrimaryButton";
 import { headerColumns } from "@/constant";
 import { useRouter, usePathname } from "next/navigation";
-import TableDiv from "@/feature/newProduct/component/TableDiv";
+import Table from "@/feature/product/component/Table";
 import { Pagination } from "@/components/Pagination";
 
 export default function InventoryPage() {
@@ -63,7 +63,11 @@ export default function InventoryPage() {
           ) : isLoading ? (
             <div className="text-gray-500">กำลังโหลดข้อมูล...</div>
           ) : products.length > 0 ? (
-            <TableDiv headerColumns={headerColumns} data={products} />
+            <Table
+              headerColumns={headerColumns}
+              data={products}
+              handleDelete={handleDelete}
+            />
           ) : (
             <div className="text-center text-gray-500 py-10">
               ไม่มีสินค้าที่จะแสดง
