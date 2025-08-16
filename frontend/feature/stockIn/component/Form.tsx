@@ -22,19 +22,6 @@ type Props = {
   onSuccess: () => void; // เพิ่ม props นี้
 };
 
-type StockInForm = {
-  created_at: Date;
-  note: string;
-  entries: {
-    variant_id: number;
-    quantity: number;
-  }[];
-  custom_sale_mode?: string;
-  custom_quantity?: number;
-  custom_pack_size?: number;
-  order_image: File | null;
-};
-
 const Form = ({ variantsOption, productId, onSuccess }: Props) => {
   const [selectSwitch, setSelectSwitch] = useState(true);
   const [manualSwitch, setManualSwitch] = useState(false);
@@ -90,6 +77,8 @@ const Form = ({ variantsOption, productId, onSuccess }: Props) => {
 
       formData.append("product_id", productId.toString());
       formData.append("created_at", formatISO(data.created_at));
+      formData.append("expiry_date", formatISO(data.expiry_date));
+      formData.append("lot_number", data.lot_number);
       formData.append("note", data.note);
       if (data.order_image) {
         formData.append("order_image", data.order_image);
@@ -132,6 +121,20 @@ const Form = ({ variantsOption, productId, onSuccess }: Props) => {
             render={({ field }) => (
               <DatePicker label="วันที่รับเข้า" field={field} />
             )}
+          />
+          <Controller
+            name="expiry_date"
+            control={control}
+            render={({ field }) => (
+              <DatePicker label="วันหมดอายุ" field={field} />
+            )}
+          />
+          <TextInput
+            label="lot number"
+            placeholder="เลข lot"
+            name={`lot_number`}
+            register={register}
+            type="text"
           />
           <div className="flex flex-col gap-1">
             <label className=" text-md font-semibold bg-white px-1">

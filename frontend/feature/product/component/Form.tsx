@@ -1,5 +1,10 @@
 "use client";
-import { useFieldArray, useForm, FormProvider } from "react-hook-form";
+import {
+  useFieldArray,
+  useForm,
+  FormProvider,
+  Controller,
+} from "react-hook-form";
 import axios from "axios";
 import TextInput from "@/components/TextInput";
 import ImageUploader from "@/components/ImageUploader";
@@ -8,6 +13,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useRootPathRedirect } from "@/hooks/useRootPathRedirect";
 import ConfirmModal from "@/components/ConfirmModal";
 import VariantField from "./VariantField";
+import ToggleSwitch from "@/components/ToggleSwitch";
 
 type Props = {
   mode: "add" | "edit";
@@ -81,6 +87,8 @@ const Form = ({ mode, initialData }: Props) => {
 
   const buildFormData = useCallback(
     (data: ProductFormData): FormData => {
+      console.log("DATA PRO", data);
+
       const formData = new FormData();
 
       formData.append("name", data.name);
@@ -89,6 +97,7 @@ const Form = ({ mode, initialData }: Props) => {
       formData.append("unit", data.unit);
       formData.append("cost_price", data.cost_price.toString());
       formData.append("variants", JSON.stringify(data.variants));
+      formData.append("has_expire", data.has_expire.toString());
 
       // ✅ แนบรูปหลัก
       if (data.main_image) {
@@ -229,6 +238,27 @@ const Form = ({ mode, initialData }: Props) => {
                 name="cost_price"
                 register={register}
                 placeholder=""
+              />
+              <Controller
+                name={`has_expire`}
+                control={control}
+                render={({ field }) => (
+                  <div className="flex justify-between border-1 rounded-sm p-2 shadow-sm mb-5">
+                    <div>
+                      <label className="text-md font-semibold">
+                        สินค้าเป็นประเภทที่มีวันหมดอายุหรือไม่?
+                      </label>
+                      <p>
+                        กรุณาตั้งค่าเปิด-ปิดเพื่อระบุสินค้า
+                        เนื่องจากมีผลต่อการรับเข้าสินค้า
+                      </p>
+                    </div>
+                    <ToggleSwitch
+                      enabled={field.value}
+                      onChange={field.onChange}
+                    />
+                  </div>
+                )}
               />
               <div className="flex flex-col mb-5 gap-1">
                 <label className="text-md font-semibold">รูปแบบการขาย</label>

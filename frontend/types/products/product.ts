@@ -7,6 +7,7 @@ type ProductFormData = {
   unit: string;
   cost_price: number;
   stock: number;
+  has_expire: boolean;
   variants: Variants[];
 };
 

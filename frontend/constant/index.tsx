@@ -28,6 +28,11 @@ export const stockInHeaderColumn: HeaderColumn[] = [
     type: "display",
   },
   {
+    header: "เลขล็อต",
+    accessor: "lot_number",
+    type: "display",
+  },
+  {
     header: "จำนวนรับเข้า",
     accessor: "total_unit",
     type: "display",
@@ -35,6 +40,11 @@ export const stockInHeaderColumn: HeaderColumn[] = [
   {
     header: "รายการรับเข้า",
     accessor: "entries",
+    type: "display",
+  },
+  {
+    header: "วันหมดอายุ",
+    accessor: "expiry_date",
     type: "display",
   },
   {

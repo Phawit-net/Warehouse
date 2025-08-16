@@ -1,12 +1,16 @@
+import click
 from flask import Flask, jsonify, request
+from flask.cli import with_appcontext
 from flask_cors import CORS
 from flask_sqlalchemy import SQLAlchemy
 import os
-from model import db
+from seed_data import seed_platforms
+from model import Platform, PlatformTier, db
 from routes.product_routes import product_bp
 from routes.stockin_routes import stockin_bp
 from routes.sale_routes import sale_bp
 from routes.channel_routes import channel_bp
+from routes.platform_routes import platform_bp
 
 app = Flask(__name__)
 app.config["DEBUG"] = True
@@ -25,9 +29,24 @@ app.register_blueprint(product_bp)
 app.register_blueprint(stockin_bp)
 app.register_blueprint(sale_bp)
 app.register_blueprint(channel_bp)
+app.register_blueprint(platform_bp)
 
 with app.app_context():
     db.create_all()
+
+@app.cli.command("seed_platforms")
+@with_appcontext
+def seed_platforms_command():
+    seed_platforms()
+    click.echo("✅ Seeded Platforms & Tiers")
+
+@app.cli.command("clear_platforms")
+@with_appcontext
+def clear_platforms_command():
+    PlatformTier.query.delete()
+    Platform.query.delete()
+    db.session.commit()
+    print("✅ Cleared all platforms and tiers")
 
 if __name__ == '__main__':
     app.run(port=5001, debug=True)

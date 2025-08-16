@@ -67,6 +67,7 @@ def get_all_products():
                 "unit": p.unit,
                 "cost_price": p.cost_price,
                 "stock": p.stock,
+                "has_expire":p.has_expire,
                 "variants": p.serialized_variants,
                 "images": [
                     {
@@ -109,7 +110,8 @@ def create_product():
             sku=data["sku"],
             category=data["category"],
             unit=data["unit"],
-            cost_price=data["cost_price"]
+            cost_price=data["cost_price"],
+            has_expire=str(data["has_expire"]).lower() == "true"
         )
 
         # ✅ เพิ่ม Variants
@@ -212,6 +214,7 @@ def get_product_by_id(product_id):
             "unit": product.unit,
             "cost_price": product.cost_price,
             "stock": product.stock,
+            "has_expire":product.has_expire,
             "variants": product.serialized_variants,
             "images": [
                 {
@@ -234,7 +237,7 @@ def update_product(product_id):
         data = request.form
 
         # 🎯 1. อัปเดตข้อมูลทั่วไป
-        fields = ["name", "sku", "category", "unit", "cost_price"]
+        fields = ["name", "sku", "category", "unit", "cost_price","has_expire"]
         for field in fields:
             if field in data:
                 setattr(product, field, data.get(field))

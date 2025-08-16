@@ -4,7 +4,7 @@ from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.utils import secure_filename
 import os
 import json
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy.orm import joinedload
 import traceback
 
@@ -33,8 +33,10 @@ def create_stockin():
         
         # ✅ แปลง created_at เป็น datetime object
         created_at_str = data.get("created_at")
+        expiry_date_str = data.get("expiry_date")
         try:
-            created_at = datetime.fromisoformat(created_at_str) if created_at_str else datetime.utcnow()
+            created_at = datetime.fromisoformat(created_at_str) if created_at_str else datetime.now(timezone.utc)
+            expiry_date = datetime.fromisoformat(expiry_date_str) if expiry_date_str else datetime.now(timezone.utc)
         except ValueError:
             return jsonify({"error": "❌ Invalid datetime format"}), 400
         
@@ -51,7 +53,9 @@ def create_stockin():
         new_stockin = StockIn(
             product_id=product_id,
             created_at=created_at,
+            expiry_date=expiry_date,
             note=data.get("note", ""),
+            lot_number=data.get("lot_number"),
             image_filename=image_filename
         )
 
@@ -94,24 +98,6 @@ def create_stockin():
 
         db.session.add(new_stockin)
         db.session.commit()
-
-
-        # # ✅ STEP 2: ดึง StockInEntry ทั้งหมดของสินค้านี้
-        # all_entries = (
-        #     db.session.query(StockInEntry)
-        #     .join(StockIn)
-        #     .filter(StockIn.product_id == product_id)
-        #     .all()
-        # )
-
-        # # ✅ STEP 3: รวม total_unit = quantity * pack_size
-        # total_stock = 0
-        # for entry in all_entries:
-        #     if entry.variant:
-        #         pack_size = entry.variant.pack_size
-        #     else:
-        #         pack_size = entry.custom_pack_size or 0
-        #     total_stock += (pack_size or 0) * entry.quantity
 
         total_stock = 0
         for entry in new_stockin.entries:
@@ -169,6 +155,9 @@ def get_stockins_by_product(product_id):
 
             result.append({
                 "id": stockin.id,
+                "lot_number":stockin.lot_number,
+                "mfg_date":stockin.mfg_date,
+                "expiry_date":stockin.expiry_date,
                 "note": stockin.note,
                 "image_filename": stockin.image_filename,
                 "created_at": stockin.created_at.isoformat(),

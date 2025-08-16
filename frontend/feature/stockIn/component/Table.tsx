@@ -11,7 +11,7 @@ type Props = {
 const Table = ({ headerColumns, data, handleDelete }: Props) => {
   const totalVisualColumns = headerColumns.length;
   const getInnerGridColsClasses = () => {
-    return `grid-cols-[1fr_1fr_1.5fr_1fr_1.5fr_0.5fr]`;
+    return `grid-cols-[1fr_1fr_1fr_1fr_1.5fr_1fr_1.5fr_0.5fr]`;
   };
   const innerGridColsClasses = getInnerGridColsClasses();
 

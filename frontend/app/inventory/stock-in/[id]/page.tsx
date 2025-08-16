@@ -31,7 +31,6 @@ const StockInPage = () => {
       <div className="p-6 text-red-400">เกิดข้อผิดพลาดในการโหลดข้อมูล</div>
     );
   if (!product) return <div className="p-6 text-gray-400">ไม่พบสินค้า</div>;
-  console.log("product", product);
 
   const main_image = product.images.find(
     (i: { is_main: boolean }) => i.is_main === true
@@ -39,7 +38,7 @@ const StockInPage = () => {
   const imageUrl = main_image
     ? `http://127.0.0.1:5001/api/inventory/uploads/${main_image.filename}`
     : "";
-  console.log(stockin);
+  console.log("stockin", stockin);
 
   const handleDelete = async (id: number) => {
     try {

@@ -55,8 +55,8 @@ export default function InventoryPage() {
       <div className="flex">
         <div className="flex-grow p-10 w-6/7">
           <div className="flex items-end justify-between mb-4">
-            <h1 className="text-2xl font-bold">Inventory</h1>
-            <AddButton text={"Add Inventory"} handleClick={handleClick} />
+            <h1 className="text-2xl font-bold">คลังสินค้า</h1>
+            <AddButton text={"เพิ่มสินค้า"} handleClick={handleClick} />
           </div>
           {error ? (
             <div className="text-red-500">โหลดข้อมูลผิดพลาด</div>

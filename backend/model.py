@@ -1,8 +1,11 @@
-import math
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
+from datetime import datetime, timezone
 
 db = SQLAlchemy()
+
+def utc_now():
+    return datetime.now(timezone.utc)
  
 # ตารางเก็บข้อมูล Product แต่ละตัว
 class Product(db.Model):
@@ -13,6 +16,12 @@ class Product(db.Model):
     unit = db.Column(db.String(20), nullable=False) #หน่วยนับ เช่น 
     cost_price = db.Column(db.Float, nullable=False) #ราคาต้นทุนสินค้า
     stock = db.Column(db.Integer, default=0) #จำนวนคงเหลือรวม
+    has_expire = db.Column(db.Boolean, default=False) #เป็นสินค้ามีวันหมดอายุไหม
+    
+    # Timestamp fields (timezone-aware)
+    created_at = db.Column(db.DateTime, nullable=False, default=utc_now)
+    updated_at = db.Column(db.DateTime, nullable=False, default=utc_now, onupdate=utc_now)
+
     variants = db.relationship('ProductVariant', backref='product', cascade="all, delete-orphan", lazy="selectin") #ต่อ One-to-Many กับ ProductVariant เพราะ Product 1 ชิ้นมีรูปแบบการขายได้หลายแบบ
     images = db.relationship('ProductImage', backref='product', cascade="all, delete-orphan", lazy="selectin")  #ต่อ One-to-Many กับ ProductImage เพราะ Product 1 ชิ้นมีรูปภาพหลายภาพได้ ใช้แค่แสดงเฉยๆ 
     @property
@@ -71,7 +80,11 @@ class StockIn(db.Model):
     product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
     image_filename = db.Column(db.String(255))
     note = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=utc_now)
+
+    lot_number = db.Column(db.String(50), nullable=True) 
+    mfg_date  = db.Column(db.DateTime, nullable=True)
+    expiry_date = db.Column(db.DateTime, nullable=True) 
 
     # ความสัมพันธ์
     product = db.relationship("Product", backref="stock_in_entries")
@@ -99,12 +112,51 @@ class StockInEntry(db.Model):
     # ถ้าเป็น custom variant ที่ผู้ใช้ใส่เอง
     custom_sale_mode = db.Column(db.String(50), nullable=True)  # เช่น doublePack
     custom_pack_size = db.Column(db.Integer, nullable=True)     # เช่น 20
-
     pack_size_at_receipt  = db.Column(db.Integer, nullable=False) # ดึงค่ามาจาก variant
-    quantity = db.Column(db.Integer, nullable=False)  # จำนวนที่รับเข้าของ variant นั้นๆ
 
+    quantity = db.Column(db.Integer, nullable=False) 
     # ความสัมพันธ์
     variant = db.relationship("ProductVariant")
+
+class StockInBash(db.Model):
+    __tablename__ = "stock_in_bash"
+    id = db.Column(db.Integer, primary_key=True)
+
+    # ผูกกลับไปหาใบรับเข้า (ที่มี lot/expiry เดียวกันทั้งใบ)
+    stock_in_id = db.Column(db.Integer, db.ForeignKey('stock_in.id'), nullable=False)
+    stock_in_entry_id = db.Column(db.Integer, db.ForeignKey('stock_in_entry.id'), nullable=False)
+
+    product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
+    variant_id = db.Column(db.Integer, db.ForeignKey('product_variant.id'), nullable=True)
+
+    # ค่าจากหัวใบรับเข้า (inherit มา)
+    lot_number = db.Column(db.String(50))
+    mfg_date = db.Column(db.DateTime)
+    expiry_date = db.Column(db.DateTime)
+
+    received_at = db.Column(db.DateTime, nullable=False, default=utc_now)
+
+    # เก็บเป็น "หน่วยย่อยสุด" เสมอ (ชิ้น)
+    units_received  = db.Column(db.Integer, nullable=False)   # = pack_size_at_receipt * quantity
+    remaining_units = db.Column(db.Integer, nullable=False)   # เริ่มเท่ากัน
+    unit_cost = db.Column(db.Float, nullable=False)           # ทุนต่อ "ชิ้นย่อย"
+
+    is_quarantined = db.Column(db.Boolean, default=False)
+    is_expired = db.Column(db.Boolean, default=False)
+
+    # ความสัมพันธ์
+    stock_in = db.relationship("StockIn", backref="batches")
+    stock_in_entry = db.relationship("StockInEntry", backref="batch", uselist=False)
+    product = db.relationship("Product")
+    variant = db.relationship("ProductVariant")
+
+    __table_args__ = (
+        db.CheckConstraint('remaining_units >= 0'),
+        db.Index('idx_batch_product_exp', 'product_id', 'expiry_date'),
+        db.Index('idx_batch_product_remain', 'product_id', 'remaining_units'),
+        db.Index('idx_batch_product_received', 'product_id', 'received_at'),
+    )
+
 
 # ตารางเก็บข้อมูลประวัติการขายสินค้า 
 class Sale(db.Model):
@@ -116,7 +168,7 @@ class Sale(db.Model):
     variant_id = db.Column(db.Integer, db.ForeignKey('product_variant.id'), nullable=False)
     channel_id = db.Column(db.Integer, db.ForeignKey('sales_channel.id'), nullable=False)
     
-    sale_date = db.Column(db.DateTime, default=datetime.utcnow) #วันที่ขาย
+    sale_date = db.Column(db.DateTime, default=utc_now) #วันที่ขาย
     customer_name = db.Column(db.String(100))   #ชื่อลูกค้า กรณีที่ต้องการหาว่าลูกค้าประจำ / ลูกค้าใหม่
     province = db.Column(db.String(100)) #จังหวัดที่จัดส่ง
     quantity = db.Column(db.Integer, nullable=False) #จำนวนที่ขาย * packsize จาก productVariant 
@@ -153,7 +205,26 @@ class Sale(db.Model):
 class SalesChannel(db.Model): 
     __tablename__ = 'sales_channel'
     id = db.Column(db.Integer, primary_key=True)
-    channel_name = db.Column(db.String(50), unique=True, nullable=False)  # เช่น Shopee, Lazada
-    commission_percent = db.Column(db.Float, default=0.0) # ค่าคอมมิชชั่นที่platform หักจากเรา เช่น 5.0
-    transaction_percent = db.Column(db.Float, default=0.0)   # ธุรกรรมการชำระเงิน เช่น 10.0 (บาท)    
+    channel_name = db.Column(db.String(50), unique=True, nullable=False) #ชื่อร้านของเรา
+    store_desc = db.Column(db.String(255)) #รายละเอียดร้านค้า
+    platform_tier_id = db.Column(db.Integer, db.ForeignKey("platform_tier.id"), nullable=False)
     is_active = db.Column(db.Boolean, default=True) # ⭐ เพิ่ม Soft Delete
+    
+    platform_tier = db.relationship("PlatformTier", backref="stores")
+
+# ตารางเก็บข้อมูลช่องทาง platform แสดงค่าค่าคอมมิชชั่น/การชำระเงินที่โดนหักจาก platform ต่างๆ
+class Platform(db.Model):
+    __tablename__ = "platform"
+    id = db.Column(db.Integer, primary_key=True)
+    name = db.Column(db.String(50), nullable=False, unique=True)  # Shopee, Lazada, TikTokShop
+    note = db.Column(db.Text)
+
+class PlatformTier(db.Model):
+    __tablename__ = "platform_tier"
+    id = db.Column(db.Integer, primary_key=True)
+    platform_id = db.Column(db.Integer, db.ForeignKey("platform.id"), nullable=False)
+    name = db.Column(db.String(50), nullable=False)  # Mall, Normal, YellowFlag
+    commission_percent = db.Column(db.Float, nullable=False)  # %
+    transaction_percent = db.Column(db.Float, nullable=False)  # %
+    # ความสัมพันธ์
+    platform = db.relationship("Platform", backref="tiers")
