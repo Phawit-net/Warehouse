@@ -77,86 +77,60 @@ class ProductImage(db.Model):
 class StockIn(db.Model):
     __tablename__ = 'stock_in'
     id = db.Column(db.Integer, primary_key=True)
-    product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
-    image_filename = db.Column(db.String(255))
-    note = db.Column(db.Text)
-    created_at = db.Column(db.DateTime, default=utc_now)
 
-    lot_number = db.Column(db.String(50), nullable=True) 
-    mfg_date  = db.Column(db.DateTime, nullable=True)
-    expiry_date = db.Column(db.DateTime, nullable=True) 
+    doc_number = db.Column(db.String(50), unique=True, nullable=False) #เลขเอกสารต่างๆ GRN-2025-08-001
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    note = db.Column(db.String(255), nullable=True) #หมายเหตุ
 
-    # ความสัมพันธ์
-    product = db.relationship("Product", backref="stock_in_entries")
-    entries = db.relationship("StockInEntry", backref="stock_in", cascade="all, delete-orphan", lazy="selectin")
-    @property
-    def total_unit(self):
-        total = 0
-        for entry in self.entries:
-            if entry.variant:
-                pack_size = entry.variant.pack_size
-            else:
-                pack_size = entry.custom_pack_size or 1
-            total += pack_size * entry.quantity
-        return total
+    # 1 StockIn -> N Entries
+    entries = db.relationship("StockInEntry", back_populates="stockin", cascade="all, delete-orphan")
 
 # ตารางเก็บข้อมูลประวัติการรับเข้าสินค้า ตามStock-in-id
 class StockInEntry(db.Model):
-    __tablename__ = 'stock_in_entry'
-    id = db.Column(db.Integer, primary_key=True)
-    stock_in_id = db.Column(db.Integer, db.ForeignKey('stock_in.id'), nullable=False)
-
-    # ถ้าเลือกจาก variant ที่มีอยู่
-    variant_id = db.Column(db.Integer, db.ForeignKey('product_variant.id'), nullable=True)
-
-    # ถ้าเป็น custom variant ที่ผู้ใช้ใส่เอง
-    custom_sale_mode = db.Column(db.String(50), nullable=True)  # เช่น doublePack
-    custom_pack_size = db.Column(db.Integer, nullable=True)     # เช่น 20
-    pack_size_at_receipt  = db.Column(db.Integer, nullable=False) # ดึงค่ามาจาก variant
-
-    quantity = db.Column(db.Integer, nullable=False) 
-    # ความสัมพันธ์
-    variant = db.relationship("ProductVariant")
-
-class StockInBash(db.Model):
-    __tablename__ = "stock_in_bash"
+    __tablename__ = 'stock_in_entries'
     id = db.Column(db.Integer, primary_key=True)
 
-    # ผูกกลับไปหาใบรับเข้า (ที่มี lot/expiry เดียวกันทั้งใบ)
-    stock_in_id = db.Column(db.Integer, db.ForeignKey('stock_in.id'), nullable=False)
-    stock_in_entry_id = db.Column(db.Integer, db.ForeignKey('stock_in_entry.id'), nullable=False)
+    # อ้างกลับไปยังเอกสารรับเข้า (StockIn)
+    stockin_id = db.Column(db.Integer, db.ForeignKey('stock_ins.id', ondelete='CASCADE'), nullable=False)
+    stockin = db.relationship("StockIn", back_populates="entries")
 
-    product_id = db.Column(db.Integer, db.ForeignKey('product.id'), nullable=False)
-    variant_id = db.Column(db.Integer, db.ForeignKey('product_variant.id'), nullable=True)
+    # Product + Variant (เลือกได้ว่าผูก variant หรือใช้ custom)
+    product_id = db.Column(db.Integer, db.ForeignKey('products.id', ondelete='CASCADE'), nullable=False)
+    product = db.relationship("Product", backref=db.backref("stockin_entries", lazy="dynamic"))
 
-    # ค่าจากหัวใบรับเข้า (inherit มา)
-    lot_number = db.Column(db.String(50))
-    mfg_date = db.Column(db.DateTime)
-    expiry_date = db.Column(db.DateTime)
-
-    received_at = db.Column(db.DateTime, nullable=False, default=utc_now)
-
-    # เก็บเป็น "หน่วยย่อยสุด" เสมอ (ชิ้น)
-    units_received  = db.Column(db.Integer, nullable=False)   # = pack_size_at_receipt * quantity
-    remaining_units = db.Column(db.Integer, nullable=False)   # เริ่มเท่ากัน
-    unit_cost = db.Column(db.Float, nullable=False)           # ทุนต่อ "ชิ้นย่อย"
-
-    is_quarantined = db.Column(db.Boolean, default=False)
-    is_expired = db.Column(db.Boolean, default=False)
-
-    # ความสัมพันธ์
-    stock_in = db.relationship("StockIn", backref="batches")
-    stock_in_entry = db.relationship("StockInEntry", backref="batch", uselist=False)
-    product = db.relationship("Product")
+    variant_id = db.Column(db.Integer, db.ForeignKey('product_variants.id', ondelete='SET NULL'), nullable=True)
     variant = db.relationship("ProductVariant")
 
-    __table_args__ = (
-        db.CheckConstraint('remaining_units >= 0'),
-        db.Index('idx_batch_product_exp', 'product_id', 'expiry_date'),
-        db.Index('idx_batch_product_remain', 'product_id', 'remaining_units'),
-        db.Index('idx_batch_product_received', 'product_id', 'received_at'),
-    )
+    # ถ้าเป็น custom variant ที่ user ใส่เอง
+    custom_sale_mode = db.Column(db.String(50), nullable=True)   # เช่น "doublePack"
+    custom_pack_size = db.Column(db.Integer, nullable=True)      # เช่น 20
 
+    # snapshot ตอนรับเข้า (สำคัญ! กันกรณี variant เปลี่ยนในอนาคต)
+    pack_size_at_receipt = db.Column(db.Integer, nullable=False)  # เช่น 10 เม็ด/ขวด/กล่อง ต่อ pack
+
+    # จำนวน pack ที่รับเข้า
+    quantity = db.Column(db.Integer, nullable=False)
+
+    # ความสัมพันธ์กับ StockBatch (Entry -> Batch)
+    batch = db.relationship("StockBatch", back_populates="stockin_entry", uselist=False)
+
+class StockBatch(db.Model):
+    __tablename__ = 'stock_batch'
+    id = db.Column(db.Integer, primary_key=True)
+
+    product_id = db.Column(db.Integer, db.ForeignKey('product.id', ondelete='CASCADE'), nullable=False)
+    product = db.relationship("Product", backref=db.backref("batches", lazy="dynamic"))
+
+    stockin_entry_id = db.Column(db.Integer, db.ForeignKey('stock_in_entry.id', ondelete='CASCADE'), nullable=False)
+    stockin_entry = db.relationship("StockInEntry", back_populates="batch")
+
+    lot_number = db.Column(db.String(100), nullable=True)
+    expiry_date = db.Column(db.Date, nullable=True)
+
+    qty_received = db.Column(db.Integer, nullable=False, default=0)
+    qty_remaining = db.Column(db.Integer, nullable=False, default=0)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
 
 # ตารางเก็บข้อมูลประวัติการขายสินค้า 
 class Sale(db.Model):
