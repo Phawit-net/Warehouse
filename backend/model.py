@@ -1,6 +1,7 @@
 from flask_sqlalchemy import SQLAlchemy
 from datetime import datetime
 from datetime import datetime, timezone
+from sqlalchemy import CheckConstraint, UniqueConstraint
 
 db = SQLAlchemy()
 
@@ -81,24 +82,32 @@ class StockIn(db.Model):
     doc_number = db.Column(db.String(50), unique=True, nullable=False) #เลขเอกสารต่างๆ GRN-2025-08-001
     created_at = db.Column(db.DateTime, default=datetime.utcnow)
     note = db.Column(db.String(255), nullable=True) #หมายเหตุ
+    image_filename = db.Column(db.String(255), nullable=True)
+
+    # 👇 ใส่ expiry ของ “รอบรับเข้า” นี้ครั้งเดียว ใช้กับ entries ทั้งหมด
+    expiry_date = db.Column(db.Date, nullable=True) 
 
     # 1 StockIn -> N Entries
-    entries = db.relationship("StockInEntry", back_populates="stockin", cascade="all, delete-orphan")
+    entries = db.relationship("StockInEntry", back_populates="stockin", cascade="all, delete-orphan",passive_deletes=True)
+
+    # เผื่ออยาก query ดู batch ของใบนี้ทั้งหมด
+    batches = db.relationship("StockBatch",back_populates="stockin", passive_deletes=True,lazy="select")
+    
 
 # ตารางเก็บข้อมูลประวัติการรับเข้าสินค้า ตามStock-in-id
 class StockInEntry(db.Model):
-    __tablename__ = 'stock_in_entries'
+    __tablename__ = 'stock_in_entry'
     id = db.Column(db.Integer, primary_key=True)
 
     # อ้างกลับไปยังเอกสารรับเข้า (StockIn)
-    stockin_id = db.Column(db.Integer, db.ForeignKey('stock_ins.id', ondelete='CASCADE'), nullable=False)
+    stockin_id = db.Column(db.Integer, db.ForeignKey('stock_in.id', ondelete='CASCADE'), nullable=False)
     stockin = db.relationship("StockIn", back_populates="entries")
 
     # Product + Variant (เลือกได้ว่าผูก variant หรือใช้ custom)
-    product_id = db.Column(db.Integer, db.ForeignKey('products.id', ondelete='CASCADE'), nullable=False)
+    product_id = db.Column(db.Integer, db.ForeignKey('product.id', ondelete='CASCADE'), nullable=False)
     product = db.relationship("Product", backref=db.backref("stockin_entries", lazy="dynamic"))
 
-    variant_id = db.Column(db.Integer, db.ForeignKey('product_variants.id', ondelete='SET NULL'), nullable=True)
+    variant_id = db.Column(db.Integer, db.ForeignKey('product_variant.id', ondelete='SET NULL'), nullable=True)
     variant = db.relationship("ProductVariant")
 
     # ถ้าเป็น custom variant ที่ user ใส่เอง
@@ -111,18 +120,25 @@ class StockInEntry(db.Model):
     # จำนวน pack ที่รับเข้า
     quantity = db.Column(db.Integer, nullable=False)
 
-    # ความสัมพันธ์กับ StockBatch (Entry -> Batch)
-    batch = db.relationship("StockBatch", back_populates="stockin_entry", uselist=False)
+    # หลาย Entry -> 1 Batch (รวมตาม lot/expiry)
+    batch_id = db.Column(db.Integer, db.ForeignKey('stock_batch.id', ondelete='SET NULL'), nullable=True)
+    batch = db.relationship("StockBatch", back_populates="entries")
+
+    __table_args__ = (
+        CheckConstraint('pack_size_at_receipt > 0', name='ck_entry_pack_size_positive'),
+        CheckConstraint('quantity > 0',            name='ck_entry_qty_positive'),
+    )
 
 class StockBatch(db.Model):
     __tablename__ = 'stock_batch'
     id = db.Column(db.Integer, primary_key=True)
 
+    # ผูกกับ header + product (ระบุขอบเขตการรวม)
+    stockin_id = db.Column(db.Integer, db.ForeignKey('stock_in.id', ondelete='CASCADE'), nullable=False)
+    stockin    = db.relationship("StockIn", back_populates="batches")
+
     product_id = db.Column(db.Integer, db.ForeignKey('product.id', ondelete='CASCADE'), nullable=False)
     product = db.relationship("Product", backref=db.backref("batches", lazy="dynamic"))
-
-    stockin_entry_id = db.Column(db.Integer, db.ForeignKey('stock_in_entry.id', ondelete='CASCADE'), nullable=False)
-    stockin_entry = db.relationship("StockInEntry", back_populates="batch")
 
     lot_number = db.Column(db.String(100), nullable=True)
     expiry_date = db.Column(db.Date, nullable=True)
@@ -130,7 +146,20 @@ class StockBatch(db.Model):
     qty_received = db.Column(db.Integer, nullable=False, default=0)
     qty_remaining = db.Column(db.Integer, nullable=False, default=0)
 
-    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    created_at = db.Column(db.DateTime, default=datetime.utcnow, nullable=False)
+
+    # 1 Batch -> N Entries (เอาไว้ trace ว่า batch นี้มาจาก entries อะไรบ้าง)    
+    entries = db.relationship("StockInEntry", back_populates="batch", lazy="dynamic")
+
+    __table_args__ = (
+        # FEFO / report
+        db.Index('ix_batch_product_expiry', 'product_id', 'expiry_date'),
+        CheckConstraint('qty_received >= 0',  name='ck_batch_qty_received_nonneg'),
+        CheckConstraint('qty_remaining >= 0', name='ck_batch_qty_remaining_nonneg'),
+        # บังคับ "1 ก้อนต่อ (stockin, product, lot, expiry)"
+        # หมายเหตุ: ถ้า lot_number เป็น NULL, DB ส่วนใหญ่จะอนุญาต NULL ซ้ำ → แนะนำ generate lot_number เสมอใน service
+        UniqueConstraint('stockin_id', 'product_id', 'lot_number', 'expiry_date', name='uq_batch_stockin_prod_lot_exp'),
+    )
 
 # ตารางเก็บข้อมูลประวัติการขายสินค้า 
 class Sale(db.Model):

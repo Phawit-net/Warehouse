@@ -38,7 +38,6 @@ const StockInPage = () => {
   const imageUrl = main_image
     ? `http://127.0.0.1:5001/api/inventory/uploads/${main_image.filename}`
     : "";
-  console.log("stockin", stockin);
 
   const handleDelete = async (id: number) => {
     try {
@@ -48,6 +47,8 @@ const StockInPage = () => {
       console.error("❌ Failed to delete:", error);
     }
   };
+
+  console.log("stockin", stockin);
 
   return (
     <main className="min-h-screen">

@@ -11,6 +11,9 @@ from routes.stockin_routes import stockin_bp
 from routes.sale_routes import sale_bp
 from routes.channel_routes import channel_bp
 from routes.platform_routes import platform_bp
+from sqlalchemy import event
+from sqlalchemy.engine import Engine
+import sqlite3
 
 app = Flask(__name__)
 app.config["DEBUG"] = True
@@ -30,6 +33,13 @@ app.register_blueprint(stockin_bp)
 app.register_blueprint(sale_bp)
 app.register_blueprint(channel_bp)
 app.register_blueprint(platform_bp)
+
+@event.listens_for(Engine, "connect")
+def set_sqlite_pragma(dbapi_connection, connection_record):
+    if isinstance(dbapi_connection, sqlite3.Connection):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA foreign_keys=ON;")
+        cursor.close()
 
 with app.app_context():
     db.create_all()

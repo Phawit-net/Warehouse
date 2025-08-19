@@ -29,7 +29,7 @@ export const stockInHeaderColumn: HeaderColumn[] = [
   },
   {
     header: "เลขล็อต",
-    accessor: "lot_number",
+    accessor: "lot_numbers",
     type: "display",
   },
   {

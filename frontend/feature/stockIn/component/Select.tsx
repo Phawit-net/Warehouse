@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useState } from "react";
 
 type Props = {
   options: Variants[];
-  value?: number; // เพิ่ม value ที่เลือก
+  value?: number | null; // เพิ่ม value ที่เลือก
   onChange?: (value: number) => void;
 };
 

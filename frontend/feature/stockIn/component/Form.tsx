@@ -14,7 +14,8 @@ import ToggleSwitchCard from "./ToggleSwitchCard";
 import ImageUploader from "@/components/ImageUploader";
 import TextArea from "@/components/TextArea";
 import axios from "axios";
-import { formatISO } from "date-fns";
+import { formatISO, format } from "date-fns";
+import { fmtISODateOrNull, toIntOrNull, toIntOrZero } from "@/lib/format";
 
 type Props = {
   variantsOption: Variants[];
@@ -66,31 +67,56 @@ const Form = ({ variantsOption, productId, onSuccess }: Props) => {
     (data: StockInForm): FormData => {
       const formData = new FormData();
 
-      const stockInEntries = data.entries;
+      formData.append("product_id", String(productId));
+      formData.append("created_at", formatISO(data.created_at));
+      const expiry = fmtISODateOrNull(data.expiry_date);
+      if (expiry) formData.append("expiry_date", expiry);
+      if (data.note) formData.append("note", data.note);
+      if (data.doc_number) formData.append("doc_number", data.doc_number);
+      if (data.order_image) formData.append("order_image", data.order_image);
+
+      const headerLot = (data.lot_number ?? "").trim() || null;
+
+      const entries = data.entries.map((e) => ({
+        variant_id: e.variant_id, // ผู้ใช้เลือกได้
+        quantity: toIntOrZero(e.quantity), // ผู้ใช้กรอกได้
+        lot_number: (e.lot_number ?? headerLot) || "",
+
+        // 🔒 ไม่ให้แก้ค่า pack size → ไม่ส่งฟิลด์นี้
+        // ให้หลังบ้านไป lookup จาก variant เอง
+
+        // เผื่อกรณี custom (เปิด manualSwitch): ต้องส่งคู่ custom_* เท่านั้น
+        custom_sale_mode: null,
+        custom_pack_size: null,
+      }));
+
+      // ถ้ามี manualSwitch -> push entry custom เพิ่ม
       if (manualSwitch) {
-        stockInEntries.push({
-          custom_sale_mode: data.custom_sale_mode,
-          custom_pack_size: data.custom_pack_size ?? 1,
-          quantity: data.custom_quantity ?? 0,
+        entries.push({
+          variant_id: null,
+          quantity: toIntOrZero(data.custom_quantity),
+          lot_number: headerLot || "",
+
+          // custom ต้องส่งสองตัวนี้ (ผู้ใช้กรอกได้)
+          custom_sale_mode: data.custom_sale_mode ?? null,
+          custom_pack_size: data.custom_pack_size ?? null,
         } as any);
       }
 
-      formData.append("product_id", productId.toString());
-      formData.append("created_at", formatISO(data.created_at));
-      formData.append("expiry_date", formatISO(data.expiry_date));
-      formData.append("lot_number", data.lot_number);
-      formData.append("note", data.note);
-      if (data.order_image) {
-        formData.append("order_image", data.order_image);
+      // กรอง entry ที่ quantity <= 0 ออก
+      const filtered = entries.filter((e) => e.quantity > 0);
+      if (filtered.length === 0) {
+        throw new Error("ต้องมีรายการรับเข้าอย่างน้อย 1 แถว (quantity > 0)");
       }
-      formData.append("entries", JSON.stringify(stockInEntries));
+
+      formData.append("entries", JSON.stringify(filtered));
       return formData;
     },
     [manualSwitch]
   );
 
   const onSubmit: SubmitHandler<StockInForm> = async (data: StockInForm) => {
-    console.log("submit", data);
+    // console.log("submit", data);
     const formData = buildFormData(data);
     try {
       await axios.post("http://localhost:5001/api/stock-in", formData);

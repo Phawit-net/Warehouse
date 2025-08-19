@@ -1,12 +1,13 @@
-from flask import abort, Blueprint, jsonify, request, send_from_directory
-from model import ProductVariant, db,Product, StockIn, StockInEntry
-from sqlalchemy.exc import SQLAlchemyError
+from flask import abort, Blueprint, current_app, jsonify, request, send_from_directory
+from model import ProductVariant, db,Product, StockIn, StockInEntry, StockBatch
+from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from werkzeug.utils import secure_filename
 import os
 import json
-from datetime import datetime, timezone
+from datetime import date, datetime, timezone
 from sqlalchemy.orm import joinedload
 import traceback
+from sqlalchemy import func
 
 stockin_bp = Blueprint('stockin_bp', __name__, url_prefix='/api/stock-in')
 
@@ -14,155 +15,387 @@ stockin_bp = Blueprint('stockin_bp', __name__, url_prefix='/api/stock-in')
 UPLOAD_FOLDER = os.path.join(os.getcwd(), 'uploads/receipts')
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
+def parse_iso_datetime(s: str | None) -> datetime:
+    """รับ ISO datetime, รองรับ Z (UTC). ถ้าไม่ส่งมา -> now(UTC)"""
+    if not s:
+        return datetime.now(timezone.utc)
+    s = s.strip()
+    if s.endswith('Z'):
+        s = s[:-1] + '+00:00'
+    return datetime.fromisoformat(s)
+
+def parse_flexible_date(s: str | None) -> date | None:
+    """รับ yyyy-MM-dd หรือ dd/MM/yyyy; ค่าว่าง -> None"""
+    if not s:
+        return None
+    s = s.strip()
+    try:
+        return date.fromisoformat(s)  # yyyy-MM-dd
+    except ValueError:
+        pass
+    try:  # dd/MM/yyyy
+        dd, mm, yyyy = s.split('/')
+        return date(int(yyyy), int(mm), int(dd))
+    except Exception as e:
+        raise ValueError(f"Unsupported date format: {s}") from e
+
+def auto_lot(doc_number: str) -> str:
+    """gen lot ถ้าไม่กรอกมา -> LOT-{doc_number}"""
+    base = (doc_number or "GRN").replace(' ', '').upper()
+    return f"LOT-{base}"
+
+def generate_doc_number():
+    today = datetime.now().strftime("%Y%m%d")
+    prefix = f"GRN-{today}"
+
+    # หา doc_number ล่าสุดของวันนี้
+    last = (
+        db.session.query(StockIn)
+        .filter(StockIn.doc_number.like(f"{prefix}-%"))
+        .order_by(StockIn.doc_number.desc())
+        .first()
+    )
+
+    if last:
+        # ดึงเลขท้ายมา +1
+        last_num = int(last.doc_number.split("-")[-1])
+        next_num = last_num + 1
+    else:
+        next_num = 1
+
+    return f"{prefix}-{next_num:03d}"
+
+def _get_receipts_dir():
+    base = current_app.config.get("RECEIPTS_DIR")
+    if base:
+        return base
+    
+    # ถ้าไม่กำหนดไว้ จะใช้ค่า default uploads/receipts
+    upload_base = current_app.config.get("UPLOAD_FOLDER", "uploads")
+    return os.path.join(upload_base, "receipts")
+
+def _delete_receipt_file(filename: str | None):
+    if not filename:
+        return
+    try:
+        receipts_dir = _get_receipts_dir()
+        path = os.path.join(receipts_dir, filename)
+        # กัน path traversal
+        path = os.path.normpath(path)
+        if os.path.commonpath([receipts_dir, path]) != os.path.normpath(receipts_dir):
+            # ถ้าไฟล์ชี้ออกนอกโฟลเดอร์ receipts จะไม่ลบ
+            return
+        if os.path.isfile(path):
+            os.remove(path)
+    except Exception as e:
+        # ไม่ให้ล้มการลบ DB ถ้าลบไฟล์ไม่ได้
+        current_app.logger.warning(f"⚠️ Failed to delete receipt file {filename}: {e}")
+
 # API - ที่เกี่ยวกับ STOCKIN ทั้งหมด
 # 1. API POST - add new stockin
 @stockin_bp.route('/', methods=['POST'])
 def create_stockin():
+    """
+    form-data:
+      - product_id (int)                         # required (หน้า product ส่งมา)
+      - created_at (ISO datetime) [optional]
+      - expiry_date ('yyyy-MM-dd' หรือ 'dd/MM/yyyy') [optional: สินค้าที่ไม่มีวันหมดอายุ -> ว่างได้]
+      - note (str) [optional]
+      - order_image (file) [optional]
+      - doc_number (str) [optional แต่ควรมี; ถ้าไม่มีจะปล่อย None]
+      - entries (json)  # required
+        [
+          {"variant_id":10, "quantity":5,  "custom_sale_mode":null,        "custom_pack_size":null, "pack_size_at_receipt":12, "lot_number":"A1"},
+          {"variant_id":null,"quantity":3,  "custom_sale_mode":"doublePack","custom_pack_size":20,  "pack_size_at_receipt":20, "lot_number":"A1"}
+        ]
+    behavior:
+      - ทุก entry ใช้ product_id จาก header เสมอ
+      - รวมเป็น batch เดียวกัน ถ้า (stockin_id, product_id, lot_number, expiry_date) ตรงกัน
+      - ถ้าไม่ส่ง lot_number -> ระบบ gen ให้อัตโนมัติ (ต่อเลขตามลำดับ entry)
+    """
     try:
         data = request.form
         order_image = request.files.get("order_image")
 
-        # ✅ เช็ค product_id
-        product_id = data.get("product_id")
-        if not product_id:
+        # --- 1) header: product_id ---
+        product_id_str = data.get("product_id")
+        if not product_id_str:
             return jsonify({"error": "❌ Missing product_id"}), 400
-        product = db.session.get(Product, product_id)
+        try:
+            header_product_id = int(product_id_str)
+        except ValueError:
+            return jsonify({"error": "❌ product_id must be integer"}), 400
+
+        product = db.session.get(Product, header_product_id)
         if not product:
             return jsonify({"error": "❌ Product not found"}), 404
 
-        
-        # ✅ แปลง created_at เป็น datetime object
-        created_at_str = data.get("created_at")
-        expiry_date_str = data.get("expiry_date")
+        # --- 2) parse created_at / expiry_date ---
         try:
-            created_at = datetime.fromisoformat(created_at_str) if created_at_str else datetime.now(timezone.utc)
-            expiry_date = datetime.fromisoformat(expiry_date_str) if expiry_date_str else datetime.now(timezone.utc)
-        except ValueError:
-            return jsonify({"error": "❌ Invalid datetime format"}), 400
-        
-        # ✅ จัดการไฟล์ภาพ
+            created_at = parse_iso_datetime(data.get("created_at"))
+            expiry_date = parse_flexible_date(data.get("expiry_date"))
+        except ValueError as e:
+            return jsonify({"error": "❌ Invalid datetime/date format", "detail": str(e)}), 400
+
+        # --- 3) file upload (optional) ---
         image_filename = None
         if order_image:
             filename = secure_filename(order_image.filename)
+            os.makedirs(UPLOAD_FOLDER, exist_ok=True)
             image_path = os.path.join(UPLOAD_FOLDER, filename)
             order_image.save(image_path)
             image_filename = filename
 
-
-        # ✅ สร้าง StockIn object
-        new_stockin = StockIn(
-            product_id=product_id,
-            created_at=created_at,
-            expiry_date=expiry_date,
-            note=data.get("note", ""),
-            lot_number=data.get("lot_number"),
-            image_filename=image_filename
-        )
-
-        # ✅ เพิ่ม Entries
-        entries_data = json.loads(data.get("entries", "[]"))
+        # --- 4) parse entries ---
+        try:
+            entries_data = json.loads(data.get("entries", "[]"))
+        except json.JSONDecodeError:
+            return jsonify({"error": "❌ entries must be valid JSON"}), 400
         if not entries_data:
             return jsonify({"error": "❌ No entries provided"}), 400
-        
-        for v in entries_data:
-            variant_id = v.get("variant_id")
-            quantity = v.get("quantity")
-            custom_sale_mode = v.get("custom_sale_mode")
-            custom_pack_size = v.get("custom_pack_size")
 
-            if not quantity:
-                return jsonify({"error": "❌ Missing quantity in an entry"}), 400
+        doc_number = data.get("doc_number")
+        if not doc_number:
+            doc_number = generate_doc_number()
 
-            # ✅ ตรวจสอบให้กรอก variant_id หรือ custom ให้ครบอย่างใดอย่างหนึ่ง
-            if not variant_id and (not custom_sale_mode or not custom_pack_size):
-                return jsonify({"error": "❌ Each entry must have either a variant_id or both custom_sale_mode and custom_pack_size"}), 400
+        header_lot = (data.get("lot_number") or "").strip() or None
+        if header_lot:
+            if any((e.get("lot_number") and e.get("lot_number").strip() != header_lot) for e in entries_data):
+                return jsonify({"error": "❌ Entries lot_number must match header lot_number"}), 400
+            
+        default_lot = header_lot or auto_lot(doc_number or "GRN")
 
-            # ⭐ ส่วนที่แก้ไข: ดึง pack_size จากฐานข้อมูล
-            pack_size_at_receipt  = 0
-            if variant_id:
-                variant = db.session.get(ProductVariant, variant_id)
-                if not variant:
-                    return jsonify({"error": f"❌ Variant with id {variant_id} not found"}), 404
-                pack_size_at_receipt  = variant.pack_size
-            else:
-                pack_size_at_receipt  = custom_pack_size
-
-            entry = StockInEntry(
-                variant_id=variant_id,
-                quantity=quantity,
-                custom_sale_mode=custom_sale_mode,
-                custom_pack_size=custom_pack_size,
-                pack_size_at_receipt=pack_size_at_receipt,
+        # --- 5) begin transaction ---
+        with db.session.begin_nested():
+            # 5.1 สร้าง header StockIn (expiry ทั้งใบ)
+            new_stockin = StockIn(
+                doc_number=doc_number,
+                created_at=created_at,
+                expiry_date=expiry_date,
+                note=data.get("note", ""),
+                image_filename=image_filename,
             )
-            new_stockin.entries.append(entry)
+            db.session.add(new_stockin)
+            db.session.flush()  # ให้มี id ใช้สร้าง batch/entry
 
-        db.session.add(new_stockin)
-        db.session.commit()
+            total_base_qty = 0
+            created_or_updated_batches = {}
 
-        total_stock = 0
-        for entry in new_stockin.entries:
-            # ใช้ pack_size_at_receipt ที่บันทึกไว้
-            total_stock += entry.pack_size_at_receipt * entry.quantity
+            # เพื่อ gen lot ถ้าไม่ได้ส่งมา (นับตาม entry)
 
-        # ✅ STEP 4: อัปเดต stock ใน Product
-        product.stock += total_stock # ✅ แก้ไข: ควรใช้ += เพื่อเพิ่ม stock ไม่ใช่กำหนดค่าใหม่
-        db.session.commit()
+            for idx, v in enumerate(entries_data, start=1):
+                # 5.2 validate entry base
+                variant_id = v.get("variant_id")
+                quantity = v.get("quantity")
+                custom_sale_mode = v.get("custom_sale_mode")
+                custom_pack_size = v.get("custom_pack_size")
+                lot_number = v.get("lot_number")  # อาจว่าง
 
-        return jsonify({"message": "✅ StockIn created successfully", "stockin_id": new_stockin.id}), 201
+                # ห้ามมี product_id ใน entry (หรือถ้ามีต้องตรงกับ header)
+                if "product_id" in v and v["product_id"] not in (None, header_product_id):
+                    return jsonify({"error": f"❌ Entry #{idx}: product_id in entry must match header product_id={header_product_id}"}), 400
+
+                # quantity ต้องเป็น int > 0
+                try:
+                    quantity = int(quantity)
+                except (TypeError, ValueError):
+                    return jsonify({"error": f"❌ Entry #{idx}: quantity must be integer"}), 400
+                if quantity <= 0:
+                    return jsonify({"error": f"❌ Entry #{idx}: quantity must be > 0"}), 400
+
+                # ต้องมี either variant_id หรือ (custom_sale_mode + custom_pack_size)
+                if not variant_id and (not custom_sale_mode or not custom_pack_size):
+                    return jsonify({"error": f"❌ Entry #{idx}: Need variant_id or (custom_sale_mode & custom_pack_size)"}), 400
+
+                # 5.3 หา pack_size_at_receipt (ถ้า FE ส่งมาแล้วใช้ได้เลย; ไม่งั้นคำนวณให้)
+                pack_size_at_receipt = v.get("pack_size_at_receipt")
+                if pack_size_at_receipt is None:
+                    if variant_id:
+                        variant = db.session.get(ProductVariant, variant_id)
+                        if not variant:
+                            return jsonify({"error": f"❌ Entry #{idx}: Variant {variant_id} not found"}), 404
+                        pack_size_at_receipt = int(variant.pack_size or 0)
+                    else:
+                        try:
+                            pack_size_at_receipt = int(custom_pack_size)
+                        except (TypeError, ValueError):
+                            return jsonify({"error": f"❌ Entry #{idx}: custom_pack_size must be integer"}), 400
+
+                try:
+                    pack_size_at_receipt = int(pack_size_at_receipt)
+                except (TypeError, ValueError):
+                    return jsonify({"error": f"❌ Entry #{idx}: pack_size_at_receipt must be integer"}), 400
+                if pack_size_at_receipt <= 0:
+                    return jsonify({"error": f"❌ Entry #{idx}: pack_size_at_receipt must be > 0"}), 400
+
+                # 5.4 base units
+                base_qty = pack_size_at_receipt * quantity
+                total_base_qty += base_qty
+
+                # 5.5 lot_number (optional) -> auto-generate ถ้าไม่ส่งมา
+                lot_number = (v.get("lot_number") or "").strip() or default_lot
+
+                # 5.6 หา/สร้าง Batch ของ (stockin, product, lot, expiry)
+                # ใช้ in-memory cache ป้องกัน query ซ้ำในรอบเดียวกัน
+                batch_key = (lot_number, expiry_date)
+                batch = created_or_updated_batches.get(batch_key)
+                if not batch:
+                    batch = (db.session.query(StockBatch)
+                             .filter(StockBatch.stockin_id == new_stockin.id,
+                                     StockBatch.product_id == header_product_id,
+                                     StockBatch.lot_number == lot_number,
+                                     StockBatch.expiry_date == new_stockin.expiry_date)
+                             .with_for_update(read=True)
+                             .first())
+                    if not batch:
+                        batch = StockBatch(
+                            stockin_id=new_stockin.id,
+                            product_id=header_product_id,
+                            lot_number=lot_number,
+                            expiry_date=new_stockin.expiry_date,
+                            qty_received=0,
+                            qty_remaining=0,
+                        )
+                        db.session.add(batch)
+                        db.session.flush()
+                    created_or_updated_batches[batch_key] = batch
+
+                # 5.7 อัปเดตยอด batch
+                batch.qty_received += base_qty
+                batch.qty_remaining += base_qty
+                db.session.add(batch)
+
+                # 5.8 สร้าง Entry + ผูก batch
+                entry = StockInEntry(
+                    stockin_id=new_stockin.id,
+                    product_id=header_product_id,
+                    variant_id=variant_id,
+                    custom_sale_mode=custom_sale_mode,
+                    custom_pack_size=(None if variant_id else custom_pack_size),
+                    pack_size_at_receipt=pack_size_at_receipt,
+                    quantity=quantity,
+                    batch_id=batch.id,
+                )
+                db.session.add(entry)
+
+        # try-commit
+        try:
+            db.session.commit()
+        except IntegrityError as ie:
+            db.session.rollback()
+            # กันเคสชน UniqueConstraint: ลองรวมใหม่สั้น ๆ หรือแจ้ง error อ่านง่าย
+            return jsonify({"error": "❌ Duplicate batch for same (stockin, product, lot, expiry).",
+                            "detail": str(ie)}), 400
+
+        return jsonify({
+            "message": "✅ StockIn created",
+            "stockin_id": new_stockin.id,
+            "product_id": header_product_id,
+            "expiry_date": new_stockin.expiry_date.isoformat() if new_stockin.expiry_date else None,
+            "total_received_base_qty": total_base_qty,
+            "batches": [
+                {
+                    "batch_id": b.id,
+                    "lot_number": b.lot_number,
+                    "expiry_date": b.expiry_date.isoformat() if b.expiry_date else None,
+                    "qty_received": b.qty_received,
+                    "qty_remaining": b.qty_remaining,
+                }
+                for b in created_or_updated_batches.values()
+            ]
+        }), 201
 
     except SQLAlchemyError as e:
         db.session.rollback()
         return jsonify({"error": f"❌ Database error: {str(e)}"}), 500
-
     except Exception as e:
+        db.session.rollback()
         return jsonify({"error": f"❌ Unexpected error: {str(e)}"}), 500
     
 # 2. API GET - get stockin by product ID
 @stockin_bp.route('/<int:product_id>', methods=['GET'])
 def get_stockins_by_product(product_id):
     try:
-        # 🔍 ดึง stock-in ทั้งหมดของสินค้านี้ และ load entries + variant แบบ eager
+        # ถ้า StockIn.batches ไม่ได้เป็น dynamic (แนะนำ): eager load ได้
         stockins = (
             db.session.query(StockIn)
-            .filter(StockIn.product_id == product_id)
-            .options(joinedload(StockIn.entries).joinedload(StockInEntry.variant))
+            .join(StockIn.entries)
+            .filter(StockInEntry.product_id == product_id)
+            .options(
+                joinedload(StockIn.entries).joinedload(StockInEntry.variant),
+                joinedload(StockIn.entries).joinedload(StockInEntry.batch),
+                joinedload(StockIn.batches),  # ถ้าเป็น dynamic ให้ลบบรรทัดนี้ แล้วใช้ .all() ด้านล่าง
+            )
             .order_by(StockIn.created_at.desc())
             .all()
         )
+
         result = []
-        for stockin in stockins:
+        for si in stockins:
+            # ----- Entries (เฉพาะสินค้านี้) -----
             entries_data = []
-
-            for entry in stockin.entries:
-                # คำนวณ pack_size (ถ้าใช้ variant เดิม หรือ custom)
-                pack_size_at_receipt  = entry.pack_size_at_receipt
-                if entry.variant:
-                    sale_mode = entry.variant.sale_mode
-                else:
-                    sale_mode = entry.custom_sale_mode
-
-                total_unit = pack_size_at_receipt  * entry.quantity if pack_size_at_receipt  else 0
+            for e in si.entries:
+                if e.product_id != product_id:
+                    continue
+                pack_size = e.pack_size_at_receipt or 0
+                qty_pack  = e.quantity or 0
+                total_u   = pack_size * qty_pack
+                sale_mode = e.variant.sale_mode if e.variant else e.custom_sale_mode
+                lot_no    = e.batch.lot_number if e.batch else None
 
                 entries_data.append({
-                    "quantity": entry.quantity,
+                    "entry_id": e.id,
                     "sale_mode": sale_mode,
-                    "pack_size": pack_size_at_receipt ,
-                    "total_unit": total_unit
+                    "quantity": qty_pack,
+                    "pack_size": pack_size,
+                    "total_unit": total_u,
+                    "lot_number": lot_no,
                 })
 
-            # รวม total_unit ของ stockin รายการนี้
-            total_unit = sum(e["total_unit"] for e in entries_data)
+            if not entries_data:
+                continue
+
+            # ----- Lots (สรุปจาก Batch ของสินค้านี้ในใบนี้) -----
+            # ถ้า si.batches เป็น dynamic: ใช้ batches_iter = si.batches.all()
+            batches_iter = si.batches if isinstance(si.batches, list) else si.batches.all()
+            lots_map = {}  # key: (lot, expiry) -> agg
+            for b in batches_iter:
+                if b.product_id != product_id:
+                    continue
+                key = (b.lot_number, b.expiry_date)
+                agg = lots_map.get(key)
+                if not agg:
+                    lots_map[key] = {
+                        "lot_number": b.lot_number,
+                        "expiry_date": b.expiry_date.isoformat() if b.expiry_date else None,
+                        "qty_received": int(b.qty_received or 0),
+                        "qty_remaining": int(b.qty_remaining or 0),
+                        "batch_ids": [b.id],
+                    }
+                else:
+                    agg["qty_received"]  += int(b.qty_received or 0)
+                    agg["qty_remaining"] += int(b.qty_remaining or 0)
+                    agg["batch_ids"].append(b.id)
+
+            lots = list(lots_map.values())
 
             result.append({
-                "id": stockin.id,
-                "lot_number":stockin.lot_number,
-                "mfg_date":stockin.mfg_date,
-                "expiry_date":stockin.expiry_date,
-                "note": stockin.note,
-                "image_filename": stockin.image_filename,
-                "created_at": stockin.created_at.isoformat(),
+                # ----- Header -----
+                "id": si.id,
+                "doc_number": si.doc_number,
+                "created_at": si.created_at.isoformat() if si.created_at else None,
+                "expiry_date": si.expiry_date.isoformat() if si.expiry_date else None,  # header-level (ถ้ามี)
+                "note": si.note,
+                "image_filename": si.image_filename,
+
+                # ----- Lots summary (อยู่นอก entries ตามที่ขอ) -----
+                "lots": lots,             # [{lot_number, expiry_date, qty_received, qty_remaining, batch_ids}]
+                "lot_count": len(lots),
+                "lot_numbers": ", ".join(l["lot_number"] for l in lots if l["lot_number"]),
+
+                # ----- Entries detail -----
                 "entries": entries_data,
-                "total_unit": total_unit,
+                "total_unit": sum(e["total_unit"] for e in entries_data),
             })
 
         return jsonify(result), 200
@@ -188,30 +421,59 @@ def uploaded_receipts(filename):
 @stockin_bp.route("/<int:stock_in_id>", methods=["DELETE"])
 def delete_stock_in(stock_in_id):
     try:
-        stock_in = StockIn.query.get(stock_in_id)
+        # โหลด StockIn + entries + batches มาพร้อมกัน
+        stock_in = (
+            db.session.query(StockIn)
+            .options(
+                joinedload(StockIn.entries).joinedload(StockInEntry.batch),
+                joinedload(StockIn.batches),
+            )
+            .get(stock_in_id)
+        )
         if not stock_in:
-            return jsonify({"error": "StockIn not found"}), 404
-        
-        # ดึง product ก่อนที่จะลบ stock_in
-        product = stock_in.product
-        if not product:
-            return jsonify({"error": "❌ Associated Product not found"}), 404
+            return jsonify({"error": "❌ StockIn not found"}), 404
 
-       # คำนวณจำนวน unit ที่ต้องลบออกจาก stock
-        amount_to_deduct = 0
-        for item in stock_in.entries:
-            # ⭐ แก้ไข: ใช้ pack_size_at_receipt ที่บันทึกไว้
-            pack_size = item.pack_size_at_receipt
-            amount_to_deduct += pack_size * item.quantity
-        
-        # อัปเดต stock ใน Product ก่อนลบ
-        product.stock -= amount_to_deduct
-        
-        # ลบ StockIn หลัก ซึ่งจะลบ StockInEntry ด้วย เพราะใช้ cascade='all, delete-orphan'
-        db.session.delete(stock_in)
+        # หา batch ทั้งหมดของใบนี้
+        batches = list(stock_in.batches)  # relationship dynamic → cast เป็น list
+
+        # ถ้า batch ก้อนใดถูกใช้ไปแล้ว (ขาย/ย้ายออกบางส่วน) → ปฏิเสธการลบ
+        used = [
+            {
+                "batch_id": b.id,
+                "lot_number": b.lot_number,
+                "expiry_date": b.expiry_date.isoformat() if b.expiry_date else None,
+                "qty_received": b.qty_received,
+                "qty_remaining": b.qty_remaining,
+            }
+            for b in batches
+            if (b.qty_remaining or 0) < (b.qty_received or 0)
+        ]
+        if used:
+            return jsonify({
+                "error": "❌ Cannot delete: some batches have already been consumed.",
+                "conflicts": used,
+                "hint": "ยกเลิก/ย้อนรายการขายที่ใช้ล็อตเหล่านี้ก่อน หรือทำ route force-delete ที่ตัดสต็อกชดเชย",
+            }), 409
+
+        # ลบไฟล์รูป (ถ้ามี) — แยกจากทรานแซกชัน DB
+        _delete_receipt_file(getattr(stock_in, "image_filename", None))
+
+        # เริ่มลบในทรานแซกชัน
+        with db.session.begin_nested():
+            # 1) ลบ batches ของใบนี้ก่อน (กัน FK ผูกกับ entry)
+            #    (StockInEntry.batch_id มี ondelete=SET NULL ด้วย)
+            for b in batches:
+                db.session.delete(b)
+
+            # 2) ลบ StockIn (entries จะโดนลบเพราะ cascade='all, delete-orphan')
+            db.session.delete(stock_in)
+
         db.session.commit()
+        return jsonify({"message": "✅ StockIn deleted (entries & batches removed)"}), 200
 
-        return jsonify({"message": "✅ StockIn deleted and stock adjusted"}), 200
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"❌ Failed to delete StockIn: {str(e)}"}), 500
 
     except SQLAlchemyError as e:
         db.session.rollback()
