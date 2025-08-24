@@ -14,6 +14,8 @@ import { useRootPathRedirect } from "@/hooks/useRootPathRedirect";
 import ConfirmModal from "@/components/ConfirmModal";
 import VariantField from "./VariantField";
 import ToggleSwitch from "@/components/ToggleSwitch";
+import Collapse from "@/components/Collapse";
+import SubmitButton from "@/components/SubmitButton";
 
 type Props = {
   mode: "add" | "edit";
@@ -202,116 +204,198 @@ const Form = ({ mode, initialData }: Props) => {
           onSubmit={handleSubmit(onSubmit)}
           className="flex flex-col space-y-2"
         >
-          <div className="grid grid-cols-[1.5fr_1fr] gap-3">
-            <div className="bg-white p-12 rounded-xl">
-              <TextInput
-                label="ชื่อสินค้า"
-                name="name"
-                type="text"
-                register={register}
-                placeholder=""
-              />
-              <TextInput
-                label="SKU"
-                name="sku"
-                type="text"
-                register={register}
-                placeholder=""
-              />
-              <TextInput
-                label="หมวดหมู่"
-                name="category"
-                type="text"
-                register={register}
-                placeholder={"category"}
-              />
-              <TextInput
-                label="หน่วยนับ"
-                name="unit"
-                type="text"
-                register={register}
-                placeholder={"เช่น ชิ้น, กล่อง, แพค, ใบ"}
-              />
-              <TextInput
-                label="ราคาต้นทุน"
-                type="number"
-                name="cost_price"
-                register={register}
-                placeholder=""
-              />
-              <Controller
-                name={`has_expire`}
-                control={control}
-                render={({ field }) => (
-                  <div className="flex justify-between border-1 rounded-sm p-2 shadow-sm mb-5">
-                    <div>
-                      <label className="text-md font-semibold">
-                        สินค้าเป็นประเภทที่มีวันหมดอายุหรือไม่?
-                      </label>
-                      <p>
-                        กรุณาตั้งค่าเปิด-ปิดเพื่อระบุสินค้า
-                        เนื่องจากมีผลต่อการรับเข้าสินค้า
-                      </p>
-                    </div>
-                    <ToggleSwitch
-                      enabled={field.value}
-                      onChange={field.onChange}
-                    />
-                  </div>
-                )}
-              />
-              <div className="flex flex-col mb-5 gap-1">
-                <label className="text-md font-semibold">รูปแบบการขาย</label>
-                <div className="flex flex-col items-center ">
-                  <div className="border-2 border-dashed border-[#f49b50] rounded p-2">
-                    {fields.map((field, index) => (
-                      <VariantField
-                        key={field.id}
-                        index={index}
-                        remove={remove}
-                        fieldsLength={fields.length}
-                        mode={mode}
-                        setModalState={setModalState}
+          <Collapse
+            defaultOpen={true}
+            title="Product Information"
+            icon={
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth="1.5"
+                stroke="currentColor"
+                className="size-6 text-[#f49b50]"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z"
+                />
+              </svg>
+            }
+          >
+            <div className="grid grid-cols-[1.5fr_1fr] gap-7 py-4">
+              <div>
+                <TextInput
+                  label="ชื่อสินค้า"
+                  name="name"
+                  type="text"
+                  register={register}
+                  placeholder=""
+                  required={true}
+                />
+                <TextInput
+                  label="SKU"
+                  name="sku"
+                  type="text"
+                  register={register}
+                  placeholder=""
+                  required={true}
+                />
+                <TextInput
+                  label="หมวดหมู่"
+                  name="category"
+                  type="text"
+                  register={register}
+                  placeholder={"category"}
+                  required={true}
+                />
+                <TextInput
+                  label="หน่วยนับ"
+                  name="unit"
+                  type="text"
+                  register={register}
+                  placeholder={"เช่น ชิ้น, กล่อง, แพค, ใบ"}
+                />
+                <TextInput
+                  label="ราคาต้นทุน"
+                  type="number"
+                  name="cost_price"
+                  register={register}
+                  placeholder=""
+                />
+                <Controller
+                  name={`has_expire`}
+                  control={control}
+                  render={({ field }) => (
+                    <div className="flex justify-between border-1 rounded-sm p-2 shadow-sm mb-5">
+                      <div>
+                        <label className="text-md font-semibold">
+                          สินค้าเป็นประเภทที่มีวันหมดอายุหรือไม่?
+                        </label>
+                        <p>
+                          กรุณาตั้งค่าเปิด-ปิดเพื่อระบุสินค้า
+                          เนื่องจากมีผลต่อการรับเข้าสินค้า
+                        </p>
+                      </div>
+                      <ToggleSwitch
+                        enabled={field.value}
+                        onChange={field.onChange}
                       />
-                    ))}
-                  </div>
-                  <div className="mt-5">
-                    <button
-                      type="button"
-                      onClick={() =>
-                        append({
-                          id: 0,
-                          sale_mode: "",
-                          selling_price: 0,
-                          sku_suffix: "",
-                          pack_size: 1,
-                          is_active: true,
-                        })
-                      }
-                      className="text-[#f49b50] border-2 border-dashed p-2 rounded-lg"
-                    >
-                      + เพิ่มรูปแบบการขาย
-                    </button>
-                  </div>
-                </div>
+                    </div>
+                  )}
+                />
+              </div>
+              <div>
+                <ImageUploader
+                  label="รูปภาพหลัก"
+                  image={mainImageFile}
+                  onChange={onMainImageChange}
+                  imagePreview={mainPreviewUrl || ""}
+                  onRemovePreview={onMainImageRemove}
+                  required={true}
+                />
+                <MultiImageUploader
+                  label="รูปภาพเพิ่มเติม"
+                  images={otherImageFiles}
+                  onChange={onOtherImagesChange}
+                  imagePreviews={otherPreviewUrls}
+                  onRemovePreview={onOtherImagesRemove}
+                />
               </div>
             </div>
-            <div className="bg-white p-12 rounded-xl">
-              <ImageUploader
-                label="รูปภาพหลัก"
-                image={mainImageFile}
-                onChange={onMainImageChange}
-                imagePreview={mainPreviewUrl || ""}
-                onRemovePreview={onMainImageRemove}
-              />
-              <MultiImageUploader
-                label="รูปภาพเพิ่มเติม"
-                images={otherImageFiles}
-                onChange={onOtherImagesChange}
-                imagePreviews={otherPreviewUrls}
-                onRemovePreview={onOtherImagesRemove}
-              />
+          </Collapse>
+          <Collapse
+            defaultOpen={true}
+            title="Pricing"
+            icon={
+              <svg
+                xmlns="http://www.w3.org/2000/svg"
+                fill="none"
+                viewBox="0 0 24 24"
+                strokeWidth="1.5"
+                stroke="currentColor"
+                className="size-6 text-[#f49b50]"
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z"
+                />
+              </svg>
+            }
+          >
+            <div className="py-4 flex flex-col gap-1">
+              <div className="flex justify-between items-center">
+                <label className="text-md font-semibold">รูปแบบการขาย</label>
+                <button
+                  type="button"
+                  onClick={() =>
+                    append({
+                      id: 0,
+                      sale_mode: "",
+                      selling_price: 0,
+                      sku_suffix: "",
+                      pack_size: 1,
+                      is_active: true,
+                    })
+                  }
+                  className="text-[#f49b50] flex items-center gap-1 cursor-pointer"
+                >
+                  <svg
+                    xmlns="http://www.w3.org/2000/svg"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    strokeWidth="1.5"
+                    stroke="currentColor"
+                    className="size-6"
+                  >
+                    <path
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                      d="M12 9v6m3-3H9m12 0a9 9 0 1 1-18 0 9 9 0 0 1 18 0Z"
+                    />
+                  </svg>
+                  เพิ่มรูปแบบการขาย
+                </button>
+              </div>
+              <div className="border-1 border-gray-200 rounded-sm">
+                <div
+                  className={`bg-gray-100 rounded-b-none rounded-sm grid gap-3 p-3 ${
+                    fields.length > 1
+                      ? mode === "edit"
+                        ? "grid-cols-[1fr_1fr_1fr_1fr_0.3fr_0.1fr]"
+                        : "grid-cols-[1fr_1fr_1fr_1fr_0.1fr]"
+                      : mode === "edit"
+                      ? "grid-cols-[1fr_1fr_1fr_1fr_0.3fr]"
+                      : "grid-cols-[1fr_1fr_1fr_1fr]"
+                  }`}
+                >
+                  <span>รูปแบบการขาย</span>
+                  <span>จำนวนต่อแพ็ค</span>
+                  <span>ราคาขาย</span>
+                  <span>SKU</span>
+                  {mode === "edit" && <span>ปิดการใช้ชั่วคราว</span>}
+                </div>
+                {fields.map((field, index) => (
+                  <VariantField
+                    key={field.id}
+                    index={index}
+                    remove={remove}
+                    fieldsLength={fields.length}
+                    mode={mode}
+                    setModalState={setModalState}
+                  />
+                ))}
+              </div>
             </div>
+          </Collapse>
+          <div className="flex justify-end">
+            {mode === "add" ? (
+              <SubmitButton text="Add Product" form="add-product-form" />
+            ) : (
+              <SubmitButton text="Save Changes" form="add-product-form" />
+            )}
           </div>
         </form>
       </FormProvider>

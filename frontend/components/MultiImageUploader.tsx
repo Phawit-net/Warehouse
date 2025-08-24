@@ -44,7 +44,7 @@ const MultiImageUploader: React.FC<Props> = React.memo(
           {imagePreviews?.map((url, index) => (
             <div
               key={`preview-${index}`}
-              className="relative w-full h-32 border rounded overflow-hidden group"
+              className="relative w-full h-32 border rounded overflow-hidden group cursor-pointer hover:ring-1 hover:ring-[#ffc596] hover:border-[#ffc596] transition"
             >
               <Image
                 src={url}
@@ -68,7 +68,7 @@ const MultiImageUploader: React.FC<Props> = React.memo(
           {images.map((file, index) => (
             <div
               key={index}
-              className="relative w-full h-32 border rounded overflow-hidden group"
+              className="relative w-full h-32 border rounded-sm overflow-hidden group cursor-pointer hover:ring-1 hover:ring-[#ffc596] hover:border-[#ffc596] transition"
             >
               <Image
                 src={URL.createObjectURL(file)}
@@ -80,7 +80,7 @@ const MultiImageUploader: React.FC<Props> = React.memo(
               <button
                 type="button"
                 onClick={() => handleRemove(index)}
-                className="absolute top-1 right-1 text-white bg-black/60 text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100"
+                className="cursor-pointer absolute top-1 right-1 text-white bg-black/60 text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100"
               >
                 ลบ
               </button>
@@ -89,7 +89,7 @@ const MultiImageUploader: React.FC<Props> = React.memo(
 
           <div
             onClick={() => inputRef.current?.click()}
-            className="flex items-center justify-center border-2 border-dashed rounded h-32 cursor-pointer text-gray-300 hover:border-[#ffc596]"
+            className="flex items-center justify-center border-1 rounded-sm h-32 cursor-pointer text-gray-300 hover:ring-1 hover:ring-[#ffc596] hover:border-[#ffc596] transition"
           >
             <div className="flex items-center gap-2">
               <svg

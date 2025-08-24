@@ -1,184 +1,322 @@
 import math
+import traceback
 from flask import abort, Blueprint, jsonify, request, send_from_directory
-from model import ProductVariant, db,Product, StockIn, StockInEntry, SalesChannel, Sale
+from model import ProductVariant, SaleItem, SaleItemBatch, StockBatch, StockMovement, db,Product, SalesChannel, Sale
 from sqlalchemy.exc import SQLAlchemyError
 from werkzeug.utils import secure_filename
-import os
-import json
-from datetime import datetime
-from sqlalchemy.orm import selectinload
-import traceback
+from datetime import datetime, date
+from sqlalchemy.orm import selectinload, joinedload
+from sqlalchemy import func, distinct
 
 sale_bp = Blueprint('sale_bp', __name__, url_prefix='/api/sale')
 
+def _today_utc():
+    return datetime.utcnow()
+
+def _is_expired(expiry: date | None) -> bool:
+    return bool(expiry and expiry < date.today())
+
+def _allocate_fefo(product_id: int, units_needed: int):
+    if units_needed <= 0:
+        return []
+    # FEFO: NULL expiry ไปท้าย
+    batches = (
+        db.session.query(StockBatch)
+        .filter(StockBatch.product_id == product_id, StockBatch.qty_remaining > 0)
+        .order_by((StockBatch.expiry_date.is_(None)).asc(), StockBatch.expiry_date.asc())
+        .with_for_update()  # SQLite จะ ignore; DB อื่นจะ lock แถวให้
+        .all()
+    )
+    plan, remain = [], units_needed
+    for b in batches:
+        if _is_expired(b.expiry_date):
+            continue
+        take = min(int(b.qty_remaining or 0), remain)
+        if take <= 0:
+            continue
+        plan.append((b.id, take))
+        remain -= take
+        if remain <= 0:
+            break
+    if remain > 0:
+        raise ValueError(f"Not enough stock: need {units_needed}, short {remain}")
+    return plan
+
+
 # 1. API POST - create sale order
-@sale_bp.route('/', methods=['POST'])
-def create_sale_order():
+@sale_bp.route('/<int:product_id>', methods=['POST'])
+def create_sale_single(product_id):
     try:
-        # ⭐STEP 1: ดึงข้อมูลจาก form และแปลงชนิดข้อมูลให้ถูกต้อง
-        data = request.form
+        p = request.form
 
-        # ตรวจสอบข้อมูลที่จำเป็นต้องมี
-        required_fields = ["channel_id", "variant_id", "quantity", "sale_price"]
-        for field in required_fields:
-            if field not in data or not data.get(field):
-                return jsonify({"error": f"❌ '{field}' is a required field"}), 400
-        try:
-            product_id = int(data.get("product_id"))
-            channel_id = int(data.get("channel_id"))
-            variant_id = int(data.get("variant_id"))
-            quantity = int(data.get("quantity"))
-            sale_price = float(data.get("sale_price"))
-            shipping_fee = float(data.get("shipping_fee", 0.0))
-            platform_discount = float(data.get("platform_discount", 0.0))
-            shop_discount = float(data.get("shop_discount", 0.0))
-            coin_discount = float(data.get("coin_discount", 0.0))
-        except (ValueError, TypeError) as e:
-            return jsonify({"error": f"❌ Invalid data type in form: {e}"}), 400
+        # 1) Validate base
+        channel_id  = p.get("channel_id")
+        variant_id  = p.get("variant_id")
+        qty_pack    = p.get("quantity_pack")
+        unit_price  = p.get("unit_price_at_sale")
 
-        # ดึงข้อมูล product ใช้เพื่อ update stock
-        product = db.session.get(Product, product_id)
-        if not product:
-            return jsonify({"error": "❌ Product not found"}), 404
+        if not channel_id:
+            return jsonify({"error": "❌ channel_id is required"}), 400
+        if not variant_id:
+            return jsonify({"error": "❌ variant_id is required"}), 400
+        if qty_pack is None or int(qty_pack) <= 0:
+            return jsonify({"error": "❌ quantity_pack must be > 0"}), 400
+        if unit_price is None or float(unit_price) < 0:
+            return jsonify({"error": "❌ unit_price_at_sale is required"}), 400
 
-        # ⭐ STEP 2: ดึงข้อมูล Denormalize จากตารางที่เกี่ยวข้อง
-        variant = db.session.get(ProductVariant, variant_id)
-        if not variant:
-            return jsonify({"error": "❌ ProductVariant not found"}), 404
-        
-        channel = db.session.get(SalesChannel, channel_id)
+        sale_date_str = p.get("sale_date")
+        sale_date = datetime.fromisoformat(sale_date_str) if sale_date_str else _today_utc()
+
+        shipping_fee      = float(p.get("shipping_fee") or 0)
+        shop_discount     = float(p.get("shop_discount") or 0)
+        platform_discount = float(p.get("platform_discount") or 0)
+        coin_discount     = float(p.get("coin_discount") or 0)
+        vat_amount        = float(p.get("vat_amount") or 0)
+
+        # 2) Snapshot channel %
+        channel = (
+            db.session.query(SalesChannel)
+            .options(joinedload(SalesChannel.platform_tier))
+            .get(int(channel_id))
+        )
         if not channel:
             return jsonify({"error": "❌ SalesChannel not found"}), 404
 
-        # ⭐ STEP 3: คำนวณค่าทั้งหมดที่ต้องใช้ ข้อมูล Denormalize
-        pack_size_at_sale = variant.pack_size
-        sale_mode_at_sale = variant.sale_mode
-        commission_percent_at_sale = channel.commission_percent
-        transaction_percent_at_sale = channel.transaction_percent
+        tier = channel.platform_tier
+        if not tier:
+            return jsonify({"error": "❌ SalesChannel has no PlatformTier bound"}), 400
 
-        # คำนวณราคาสุทธิ
-        total_price = quantity * sale_price
-        # คำนวณยอดที่ลูกค้าจ่าย (รวมส่วนลดและค่าส่ง)
-        customer_pay = total_price - shop_discount - platform_discount - coin_discount + shipping_fee
-        # คำนวณค่าธรรมเนียม
-        commission_fee = math.floor(total_price * (commission_percent_at_sale / 100))
-        transaction_fee = round((customer_pay + platform_discount + coin_discount) * (transaction_percent_at_sale / 100), 2)
-        # คำนวณยอดเงินที่ผู้ขายได้รับและ VAT
-        seller_receive = total_price - commission_fee - transaction_fee - shop_discount
-        vat_amount = (commission_fee + transaction_fee) * 7 / 107
-  
-        # แปลง date time
-        sale_date_str = data.get("sale_date")
-        try:
-            sale_date = datetime.fromisoformat(sale_date_str) if sale_date_str else datetime.utcnow()
-        except ValueError:
-            return jsonify({"error": "❌ Invalid datetime format"}), 400
-  
-        # ⭐⭐⭐ เพิ่มโค้ดสำหรับหักสต็อกที่นี่ ⭐⭐⭐
-        stock_to_deduct = pack_size_at_sale * quantity
-        if product.stock < stock_to_deduct:
-            return jsonify({"error": "❌ Insufficient stock"}), 400
-        
-        # หักสต็อก
-        product.stock -= stock_to_deduct
+        commission_pct  = float(tier.commission_percent or 0.0)
+        transaction_pct = float(tier.transaction_percent or 0.0)
 
-        # ⭐ STEP 4: สร้าง Object และบันทึกลง DB
-        new_sale_order = Sale(
-            product_id=product_id,
-            variant_id=variant_id,
-            channel_id=channel_id,
-            sale_date=sale_date,
-            customer_name=data.get("customer_name"),
-            province=data.get("province"),
-            quantity=quantity,
-            sale_price=sale_price,
-            
-            # บันทึกข้อมูล Denormalize
-            pack_size_at_sale=pack_size_at_sale,
-            sale_mode_at_sale=sale_mode_at_sale,
-            channel_name_at_sale=channel.channel_name,
-            commission_percent_at_sale=commission_percent_at_sale,
-            transaction_percent_at_sale=transaction_percent_at_sale,
-
-            # บันทึกค่าที่คำนวณได้ทั้งหมด
-            total_price=total_price,
-            shipping_fee=shipping_fee,
-            shop_discount=shop_discount,
-            platform_discount=platform_discount,
-            coin_discount=coin_discount,
-            customer_pay=customer_pay,
-            commission_fee=commission_fee,
-            transaction_fee=transaction_fee,
-            seller_receive=seller_receive,
-            vat_amount=vat_amount,
+        # 3) Resolve product + variant (และล็อก snapshot จาก variant)
+        variant = (
+            db.session.query(ProductVariant)
+            .options(joinedload(ProductVariant.product))
+            .get(variant_id)
         )
+        if not variant or int(variant.product_id) != int(product_id):
+            return jsonify({"error": "❌ variant_id does not belong to product_id"}), 400
 
-        db.session.add(new_sale_order)
+        pack_size = int(variant.pack_size or 0)
+        if pack_size <= 0:
+            return jsonify({"error": "❌ variant.pack_size invalid"}), 400
+
+        sale_mode = variant.sale_mode or "variant"
+        qty_pack  = int(qty_pack)
+        base_units = pack_size * qty_pack
+        unit_price = float(unit_price)
+        line_total = unit_price * qty_pack
+
+        # 4) วางแผน FEFO ก่อนทำจริง
+        plan = _allocate_fefo(product_id, base_units)  # [(batch_id, qty), ...]
+
+        # 5) Persist ทั้งบิล (หนึ่งรายการเดียว)
+        with db.session.begin_nested():
+            sale = Sale(
+                channel_id=channel.id,
+                sale_date=sale_date,
+                customer_name=p.get("customer_name"),
+                province=p.get("province"),
+                # note=p.get("note"),
+                channel_name_at_sale=channel.channel_name,
+                commission_percent_at_sale=commission_pct,
+                transaction_percent_at_sale=transaction_pct,
+                shipping_fee=shipping_fee,
+                shop_discount=shop_discount,
+                platform_discount=platform_discount,
+                coin_discount=coin_discount,
+            )
+            db.session.add(sale)
+            db.session.flush()
+
+            si = SaleItem(
+                sale_id=sale.id,
+                product_id=product_id,
+                variant_id=variant_id,
+                sale_mode_at_sale=sale_mode,
+                pack_size_at_sale=pack_size,
+                quantity_pack=qty_pack,
+                unit_price_at_sale=unit_price,
+                base_units=base_units,
+                line_total=line_total,
+            )
+            db.session.add(si)
+            db.session.flush()
+
+            # ตัดล็อตตามแผน
+            for (batch_id, cut_qty) in plan:
+                batch = db.session.get(StockBatch, batch_id)
+                if not batch:
+                    raise ValueError(f"Batch not found: {batch_id}")
+                if _is_expired(batch.expiry_date):
+                    raise ValueError(f"Batch expired while allocating: {batch_id}")
+                if int(batch.qty_remaining or 0) < int(cut_qty):
+                    raise ValueError("Concurrent update: batch not enough")
+
+                batch.qty_remaining = int(batch.qty_remaining) - int(cut_qty)
+
+                db.session.add(SaleItemBatch(
+                    sale_item_id=si.id,
+                    product_id=product_id,
+                    batch_id=batch.id,
+                    qty=int(cut_qty),
+                ))
+
+                db.session.add(StockMovement(
+                    product_id=product_id,
+                    batch_id=batch.id,
+                    movement_type="OUT",
+                    qty=-int(cut_qty),
+                    batch_qty_remaining=int(batch.qty_remaining),
+                    ref_sale_id=sale.id,
+                    note=f"SaleItem #{si.id}",
+                ))
+
+            # คิดยอดบิล (อย่างง่าย)
+            sale.subtotal = float(line_total)
+            sale.customer_pay = sale.subtotal - shop_discount  - platform_discount - coin_discount + shipping_fee
+            sale.commission_fee  = math.floor(sale.subtotal * (commission_pct / 100.0))
+            sale.transaction_fee = round((sale.customer_pay + platform_discount + coin_discount) * (transaction_pct / 100.0))
+            sale.vat_amount = (sale.commission_fee + sale.transaction_fee) * 7 / 107
+            sale.seller_receive = sale.subtotal - sale.commission_fee - sale.transaction_fee - shop_discount
         db.session.commit()
 
-        return jsonify({"message": "✅ Sale order created successfully", "sale_id": new_sale_order.id}), 201
+        # 6) Response
+        return jsonify({
+            "message": "✅ Sale created",
+            "sale_id": sale.id,
+            "product_id": product_id,
+            "variant_id": variant_id,
+            "fefo_allocation": [{"batch_id": b, "qty": q} for (b, q) in plan],
+            "channel": {
+                "id": sale.channel_id,
+                "name": sale.channel_name_at_sale,
+                "commission_percent": sale.commission_percent_at_sale,
+                "transaction_percent": sale.transaction_percent_at_sale
+            },
+            "totals": {
+                "subtotal": sale.subtotal,
+                "shipping_fee": sale.shipping_fee,
+                "discounts": {
+                    "shop_discount": sale.shop_discount,
+                    "platform_discount": sale.platform_discount,
+                    "coin_discount": sale.coin_discount
+                },
+                "vat_amount": sale.vat_amount,
+                "commission_fee": sale.commission_fee,
+                "transaction_fee": sale.transaction_fee,
+                "customer_pay": sale.customer_pay,
+                "seller_receive": sale.seller_receive
+            }
+        }), 201
 
-    except SQLAlchemyError as e:
+    except ValueError as e:
         db.session.rollback()
-        return jsonify({"error": f"❌ Database error: {str(e)}"}), 500
-
+        return jsonify({"error": f"❌ {str(e)}"}), 400
     except Exception as e:
-        return jsonify({"error": f"❌ Unexpected error: {str(e)}"}), 500
+        db.session.rollback()
+        traceback.print_exc()  # << จะพิมพ์ไฟล์/บรรทัดที่พังใน console
+        return jsonify({"error": f"❌ Failed to create sale: {str(e)}"}), 500
     
 # 2. API GET - get all sale orders by Product Id with pagination
 @sale_bp.route("/<int:product_id>", methods=["GET"])
 def get_all_sale_orders(product_id):
     try:
-        # ✅ ดึงค่า pagination จาก query parameter
-        page = int(request.args.get('page', 1))
+        # pagination
+        page  = int(request.args.get('page', 1))
         limit = int(request.args.get('limit', 10))
         offset = (page - 1) * limit
 
-        # ✅ ใช้ eager loading เพื่อดึงข้อมูล Sale ที่มีข้อมูล Variant และ Channel อยู่ด้วย
-        sales_orders = (
+        include_alloc = request.args.get('include_allocations') in ("1", "true", "True")
+
+        # ดึงเฉพาะใบขายที่มี SaleItem ของ product นี้
+        # (ในระบบคุณ 1 ใบ = 1 รายการอยู่แล้ว แต่เขียนให้เผื่ออนาคต)
+        q = (
             db.session.query(Sale)
+            .join(Sale.items)  # join SaleItem
+            .filter(SaleItem.product_id == product_id)
             .options(
-                selectinload(Sale.variant),
-                selectinload(Sale.channel)
+                # โหลด items (และ variant snapshot) มาในครั้งเดียว
+                selectinload(Sale.items).selectinload(SaleItem.variant),
+                # ถ้าอยากได้ allocation (lot/qty ต่อ batch) ให้ joinedload batches ด้วย
+                joinedload(Sale.items).joinedload(SaleItem.batches) if include_alloc else selectinload(Sale.items),
             )
-            .filter(Sale.product_id == product_id)
-            .offset(offset)
-            .limit(limit)
-            .all()
+            .order_by(Sale.sale_date.desc(), Sale.id.desc())
         )
-        
-        total = db.session.query(Sale).count()
-        
-        # ✅ สร้างโครงสร้าง JSON response ที่มี data และ pagination
-        result = {
-            "data": [
-                {
-                    "id": s.id,
-                    "sale_date": s.sale_date.isoformat(),
+
+        # นับจำนวนใบขาย (distinct sale.id) สำหรับสินค้านี้
+        total = (
+            db.session.query(func.count(distinct(Sale.id)))
+            .join(Sale.items)
+            .filter(SaleItem.product_id == product_id)
+            .scalar()
+        )
+
+        sales_orders = q.offset(offset).limit(limit).all()
+
+        # ถ้าต้องการรายละเอียดล็อต (lot_number/expiry) ของ allocation
+        # แนะนำให้มี relationship ใน SaleItemBatch: batch = db.relationship("StockBatch")
+        # ถ้ายังไม่มี คุณสามารถเพิ่ม แล้วค่อย joinedload(SaleItem.batches).joinedload(SaleItemBatch.batch)
+        def _to_allocations(item: SaleItem):
+            alloc = []
+            for sib in item.batches:
+                row = {
+                    "batch_id": sib.batch_id,
+                    "qty": int(sib.qty or 0),
+                }
+                # ถ้ามี relationship sib.batch ให้แสดง lot/expiry ด้วย
+                if hasattr(sib, "batch") and sib.batch is not None:
+                    row.update({
+                        "lot_number": sib.batch.lot_number,
+                        "expiry_date": sib.batch.expiry_date.isoformat() if sib.batch.expiry_date else None,
+                    })
+                alloc.append(row)
+            return alloc
+
+        data = []
+        for s in sales_orders:
+            # ในระบบคุณ 1 ใบ = 1 รายการ; แต่เผื่อหลายรายการจึงวน loop
+            for it in s.items:
+                data.append({
+                    # header-level
+                    "sale_id": s.id,
+                    "sale_date": s.sale_date.isoformat() if s.sale_date else None,
+                    "channel_id": s.channel_id,
+                    "channel_name_at_sale": s.channel_name_at_sale,
+                    "commission_percent_at_sale": s.commission_percent_at_sale,
+                    "transaction_percent_at_sale": s.transaction_percent_at_sale,
                     "customer_name": s.customer_name,
                     "province": s.province,
-                    "quantity": s.quantity,
-                    "sale_price": s.sale_price,
-                    "pack_size_at_sale": s.pack_size_at_sale,
-                    "sale_mode_at_sale": s.sale_mode_at_sale,
-                    # ดึงข้อมูลจาก object ที่ถูก eager load มาใช้
-                    "shipping_fee":s.shipping_fee,
-                    "shop_discount":s.shop_discount,
-                    "platform_discount":s.platform_discount,
-                    "coin_discount":s.coin_discount,
-                    "channel_name_at_sale":s.channel_name_at_sale,
-                    "seller_receive": s.seller_receive,
-                    "commission_percent_at_sale":s.commission_percent_at_sale,
-                    "transaction_percent_at_sale":s.transaction_percent_at_sale,
-                    "total_price":s.total_price,
-                    "vat_amount":s.vat_amount,
-                    "seller_receive":s.seller_receive,
-                    "customer_pay":s.customer_pay,
+
+                    # item-level (snapshot ตอนขาย)
+                    "product_id": it.product_id,
+                    "variant_id": it.variant_id,
+                    "sale_mode_at_sale": it.sale_mode_at_sale,
+                    "pack_size_at_sale": it.pack_size_at_sale,
+                    "quantity_pack": it.quantity_pack,
+                    "unit_price_at_sale": it.unit_price_at_sale,
+                    "base_units": it.base_units,
+                    "line_total": it.line_total,
+
+                    # totals (ระดับบิล)
+                    "subtotal": s.subtotal,
+                    "shipping_fee": s.shipping_fee,
+                    "shop_discount": s.shop_discount,
+                    "platform_discount": s.platform_discount,
+                    "coin_discount": s.coin_discount,
+                    "vat_amount": s.vat_amount,
                     "commission_fee": s.commission_fee,
                     "transaction_fee": s.transaction_fee,
-                }
-                for s in sales_orders
-            ],
+                    "customer_pay": s.customer_pay,
+                    "seller_receive": s.seller_receive,
+
+                    # allocations (ต่อใบ/ต่อ item)
+                    "allocations": _to_allocations(it) if include_alloc else [],
+                })
+
+        result = {
+            "data": data,
             "pagination": {
                 "page": page,
                 "limit": limit,
@@ -186,43 +324,87 @@ def get_all_sale_orders(product_id):
                 "total_pages": (total + limit - 1) // limit
             }
         }
-        
         return jsonify(result), 200
-    
+
     except Exception as e:
         return jsonify({"error": f"❌ Unexpected error: {str(e)}"}), 500
 
 #3. API DELETE - delete a sale order
 @sale_bp.route("/<int:sale_id>", methods=["DELETE"])
-def delete_sale_order(sale_id):
+def delete_sale(sale_id: int):
     try:
-        # ⭐ ค้นหา sale order ด้วย ID
-        sale_order = db.session.get(Sale, sale_id)
-        if not sale_order:
-            return jsonify({"error": "❌ Sale order not found"}), 404
-        
-        # ⭐⭐⭐ เพิ่มโค้ดสำหรับคืนสต็อกที่นี่ ⭐⭐⭐
-        # ค้นหา product ที่เกี่ยวข้อง
-        product = db.session.get(Product, sale_order.product_id)
-        if not product:
-            # ถ้าไม่พบ product ให้ส่งข้อความ error แต่ยังคงลบ sale order
-            print(f"⚠️ Warning: Product with ID {sale_order.product_id} not found. Cannot restore stock.")
+        force = request.args.get('force') in ('1','true','True')
 
-        # คำนวณสต็อกที่ต้องคืน
-        stock_to_add = sale_order.pack_size_at_sale * sale_order.quantity
-        
-        # คืนสต็อก
-        product.stock += stock_to_add
-        
-        # ⭐ ลบ object จาก session และ commit
-        db.session.delete(sale_order)
+        sale = (
+            db.session.query(Sale)
+            .options(
+                joinedload(Sale.items)
+                  .joinedload(SaleItem.batches)
+                  .joinedload(SaleItemBatch.batch)
+            )
+            .get(sale_id)
+        )
+        if not sale:
+            return jsonify({"error": "❌ Sale not found"}), 404
+
+        restored = []
+
+        with db.session.begin_nested():
+            # 1) คืนสต็อกจาก allocations เดิม
+            for item in sale.items:
+                for sib in item.batches:
+                    b = sib.batch
+                    if not b:
+                        return jsonify({"error": f"❌ Missing batch for SaleItemBatch #{sib.id}"}), 500
+
+                    before = int(b.qty_remaining or 0)
+                    add_qty = int(sib.qty or 0)
+                    target  = before + add_qty
+
+                    if target > int(b.qty_received or 0):
+                        if not force:
+                            return jsonify({
+                                "error": "❌ Cannot restore stock: would exceed batch qty_received",
+                                "conflict": {
+                                    "batch_id": b.id,
+                                    "lot_number": b.lot_number,
+                                    "qty_received": int(b.qty_received or 0),
+                                    "qty_remaining_before": before,
+                                    "trying_to_add": add_qty,
+                                    "would_be": target
+                                },
+                                "hint": "เรียกใหม่ด้วย ?force=1 เพื่อ cap ให้ไม่เกิน qty_received",
+                            }), 409
+                        add_qty = int(b.qty_received or 0) - before
+                        target  = before + add_qty
+
+                    b.qty_remaining = target
+                    restored.append({
+                        "batch_id": b.id,
+                        "lot_number": b.lot_number,
+                        "expiry_date": b.expiry_date.isoformat() if b.expiry_date else None,
+                        "restored_qty": int(add_qty),
+                        "qty_remaining_after": int(target)
+                    })
+
+            # 2) ลบ movement ที่อ้างใบขายนี้ทิ้งก่อน (กัน FK fail)
+            db.session.query(StockMovement)\
+                .filter(StockMovement.ref_sale_id == sale.id)\
+                .delete(synchronize_session=False)
+
+            # 3) ลบ sale (SaleItem/SaleItemBatch จะหายเพราะ cascade)
+            db.session.delete(sale)
+
         db.session.commit()
-        
-        return jsonify({"message": f"✅ Sale order with id {sale_id} deleted successfully"}), 200
-    
+        return jsonify({
+            "message": "✅ Sale hard-deleted and stock restored",
+            "sale_id": sale_id,
+            "restored_allocations": restored
+        }), 200
+
     except SQLAlchemyError as e:
         db.session.rollback()
         return jsonify({"error": f"❌ Database error: {str(e)}"}), 500
-    
     except Exception as e:
+        db.session.rollback()
         return jsonify({"error": f"❌ Unexpected error: {str(e)}"}), 500

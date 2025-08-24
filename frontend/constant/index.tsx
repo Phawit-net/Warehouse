@@ -102,7 +102,7 @@ export const salesOrderHeaderColumn: HeaderColumn[] = [
   },
   {
     header: "จำนวน",
-    accessor: "quantity",
+    accessor: "quantity_pack",
     type: "display",
   },
   {
@@ -112,7 +112,7 @@ export const salesOrderHeaderColumn: HeaderColumn[] = [
   },
   {
     header: "ราคาขายสุทธิ",
-    accessor: "total_price",
+    accessor: "subtotal",
     type: "display",
   },
   {

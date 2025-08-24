@@ -25,15 +25,15 @@ const VariantField = React.memo(
     const isActive = watch(`variants.${index}.is_active`);
     return (
       <div
-        className={`p-2 items-center grid ${
+        className={`p-3 items-center grid ${
           fieldsLength > 1
             ? mode === "edit"
-              ? "grid-cols-[6fr_3fr_3fr_6fr_0.5fr_0.5fr]"
-              : "grid-cols-[6fr_3fr_3fr_6fr_0.5fr]"
+              ? "grid-cols-[1fr_1fr_1fr_1fr_0.3fr_0.1fr]"
+              : "grid-cols-[1fr_1fr_1fr_1fr_0.1fr]"
             : mode === "edit"
-            ? "grid-cols-[4fr_1.5fr_1.5fr_3fr_0.5fr]"
-            : "grid-cols-[4fr_1.5fr_1.5fr_3fr]"
-        } gap-3 `}
+            ? "grid-cols-[1fr_1fr_1fr_1fr_0.3fr]"
+            : "grid-cols-[1fr_1fr_1fr_1fr]"
+        } gap-3 [&:not(:last-child)]:border-b-1 `}
       >
         <TextInput
           label=""
@@ -80,7 +80,10 @@ const VariantField = React.memo(
             name={`variants.${index}.is_active`}
             control={control}
             render={({ field }) => (
-              <ToggleSwitch enabled={field.value} onChange={field.onChange} />
+              <div className="flex justify-center gap-3">
+                <ToggleSwitch enabled={field.value} onChange={field.onChange} />
+                <label>{isActive ? "Active" : "Inactive"}</label>
+              </div>
             )}
           />
         )}

@@ -1,5 +1,5 @@
 from flask import abort, Blueprint, current_app, jsonify, request, send_from_directory
-from model import ProductVariant, db,Product, StockIn, StockInEntry, StockBatch
+from model import ProductVariant, db,Product, StockIn, StockInEntry, StockBatch, StockMovement
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from werkzeug.utils import secure_filename
 import os
@@ -181,6 +181,9 @@ def create_stockin():
             total_base_qty = 0
             created_or_updated_batches = {}
 
+            # 🔹 สะสมยอดรับเข้าต่อ batch_id เพื่อนำไปสร้าง movement(IN) ทีเดียว
+            added_by_batch_id: dict[int, int] = {}
+
             # เพื่อ gen lot ถ้าไม่ได้ส่งมา (นับตาม entry)
 
             for idx, v in enumerate(entries_data, start=1):
@@ -265,6 +268,8 @@ def create_stockin():
                 batch.qty_remaining += base_qty
                 db.session.add(batch)
 
+                added_by_batch_id[batch.id] = added_by_batch_id.get(batch.id, 0) + base_qty
+
                 # 5.8 สร้าง Entry + ผูก batch
                 entry = StockInEntry(
                     stockin_id=new_stockin.id,
@@ -278,6 +283,19 @@ def create_stockin():
                 )
                 db.session.add(entry)
 
+            for b in created_or_updated_batches.values():
+                added = int(added_by_batch_id.get(b.id, 0))
+                if added <= 0:
+                    continue
+                db.session.add(StockMovement(
+                    product_id=b.product_id,
+                    batch_id=b.id,
+                    movement_type="IN",                 # ✅ รับเข้า
+                    qty=added,                          # + จำนวน base units
+                    batch_qty_remaining=int(b.qty_remaining or 0),
+                    ref_stockin_id=new_stockin.id,
+                    note=f"StockIn {new_stockin.doc_number} lot {b.lot_number}",
+                ))
         # try-commit
         try:
             db.session.commit()
@@ -421,7 +439,6 @@ def uploaded_receipts(filename):
 @stockin_bp.route("/<int:stock_in_id>", methods=["DELETE"])
 def delete_stock_in(stock_in_id):
     try:
-        # โหลด StockIn + entries + batches มาพร้อมกัน
         stock_in = (
             db.session.query(StockIn)
             .options(
@@ -433,17 +450,17 @@ def delete_stock_in(stock_in_id):
         if not stock_in:
             return jsonify({"error": "❌ StockIn not found"}), 404
 
-        # หา batch ทั้งหมดของใบนี้
-        batches = list(stock_in.batches)  # relationship dynamic → cast เป็น list
+        batches = list(stock_in.batches)
+        batch_ids = [b.id for b in batches]
 
-        # ถ้า batch ก้อนใดถูกใช้ไปแล้ว (ขาย/ย้ายออกบางส่วน) → ปฏิเสธการลบ
+        # ❗ กันลบถ้ามีการใช้ล็อตแล้ว (ขาย/โอนออก)
         used = [
             {
                 "batch_id": b.id,
                 "lot_number": b.lot_number,
                 "expiry_date": b.expiry_date.isoformat() if b.expiry_date else None,
-                "qty_received": b.qty_received,
-                "qty_remaining": b.qty_remaining,
+                "qty_received": int(b.qty_received or 0),
+                "qty_remaining": int(b.qty_remaining or 0),
             }
             for b in batches
             if (b.qty_remaining or 0) < (b.qty_received or 0)
@@ -452,37 +469,42 @@ def delete_stock_in(stock_in_id):
             return jsonify({
                 "error": "❌ Cannot delete: some batches have already been consumed.",
                 "conflicts": used,
-                "hint": "ยกเลิก/ย้อนรายการขายที่ใช้ล็อตเหล่านี้ก่อน หรือทำ route force-delete ที่ตัดสต็อกชดเชย",
+                "hint": "ลบ/void ใบขายที่ใช้ล็อตเหล่านี้ก่อน",
             }), 409
 
-        # ลบไฟล์รูป (ถ้ามี) — แยกจากทรานแซกชัน DB
+        # ลบไฟล์รูปก่อน (ไม่ผูกทรานแซกชัน DB)
         _delete_receipt_file(getattr(stock_in, "image_filename", None))
 
-        # เริ่มลบในทรานแซกชัน
         with db.session.begin_nested():
-            # 1) ลบ batches ของใบนี้ก่อน (กัน FK ผูกกับ entry)
-            #    (StockInEntry.batch_id มี ondelete=SET NULL ด้วย)
-            for b in batches:
-                db.session.delete(b)
+            if batch_ids:
+                # 1) SET NULL ที่ StockInEntry.batch_id กัน FK ชนตอนลบ batch
+                db.session.query(StockInEntry)\
+                    .filter(StockInEntry.stockin_id == stock_in.id,
+                            StockInEntry.batch_id.in_(batch_ids))\
+                    .update({StockInEntry.batch_id: None}, synchronize_session=False)
 
-            # 2) ลบ StockIn (entries จะโดนลบเพราะ cascade='all, delete-orphan')
+                # 2) ลบ StockMovement ที่อ้างใบนี้ และที่อ้าง batch เหล่านี้ (ลบแบบ bulk ได้)
+                db.session.query(StockMovement)\
+                    .filter(StockMovement.ref_stockin_id == stock_in.id)\
+                    .delete(synchronize_session=False)
+
+                db.session.query(StockMovement)\
+                    .filter(StockMovement.batch_id.in_(batch_ids))\
+                    .delete(synchronize_session=False)
+
+                # 3) ลบ Batch ทีละตัว (อย่า bulk delete เพราะ instance ถูกโหลดแล้ว)
+                for b in batches:
+                    db.session.delete(b)
+
+            # 4) ลบ StockIn (entries จะโดนลบเพราะ cascade)
             db.session.delete(stock_in)
 
         db.session.commit()
-        return jsonify({"message": "✅ StockIn deleted (entries & batches removed)"}), 200
-
-    except Exception as e:
-        db.session.rollback()
-        return jsonify({"error": f"❌ Failed to delete StockIn: {str(e)}"}), 500
+        return jsonify({"message": "✅ StockIn deleted (entries, batches, movements removed)"}), 200
 
     except SQLAlchemyError as e:
         db.session.rollback()
-        # ควร import traceback
-        import traceback
-        traceback.print_exc()
         return jsonify({"error": f"❌ Database error: {str(e)}"}), 500
     except Exception as e:
-        # ควร import traceback
-        import traceback
-        traceback.print_exc()
-        return jsonify({"error": f"❌ Unexpected error: {str(e)}"}), 500
+        db.session.rollback()
+        return jsonify({"error": f"❌ Failed to delete StockIn: {str(e)}"}), 500

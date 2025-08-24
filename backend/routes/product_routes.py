@@ -1,5 +1,5 @@
-from flask import abort, Blueprint, jsonify, request, send_from_directory
-from model import Sale, StockBatch, StockIn, StockInEntry, db, Product, ProductVariant, ProductImage
+from flask import abort, Blueprint, current_app, jsonify, request, send_from_directory
+from model import Sale, SaleItem, StockBatch, StockIn, StockInEntry, StockMovement, db, Product, ProductVariant, ProductImage
 from werkzeug.utils import secure_filename
 from sqlalchemy.orm import selectinload, joinedload
 from sqlalchemy.exc import SQLAlchemyError
@@ -34,6 +34,32 @@ def delete_image_file(filename):
     path = os.path.join(UPLOAD_FOLDER, filename)
     if os.path.exists(path):
         os.remove(path)
+
+def _get_receipts_dir():
+    base = current_app.config.get("RECEIPTS_DIR")
+    if base:
+        return base
+    
+    # ถ้าไม่กำหนดไว้ จะใช้ค่า default uploads/receipts
+    upload_base = current_app.config.get("UPLOAD_FOLDER", "uploads")
+    return os.path.join(upload_base, "receipts")
+
+def _delete_receipt_file(filename: str | None):
+    if not filename:
+        return
+    try:
+        receipts_dir = _get_receipts_dir()
+        path = os.path.join(receipts_dir, filename)
+        # กัน path traversal
+        path = os.path.normpath(path)
+        if os.path.commonpath([receipts_dir, path]) != os.path.normpath(receipts_dir):
+            # ถ้าไฟล์ชี้ออกนอกโฟลเดอร์ receipts จะไม่ลบ
+            return
+        if os.path.isfile(path):
+            os.remove(path)
+    except Exception as e:
+        # ไม่ให้ล้มการลบ DB ถ้าลบไฟล์ไม่ได้
+        current_app.logger.warning(f"⚠️ Failed to delete receipt file {filename}: {e}")
 
 # API - ที่เกี่ยวกับ PRODUCTS ทั้งหมด
 # 1. API GET - get all product
@@ -188,70 +214,112 @@ def uploaded_file(filename):
 @product_bp.route('/<int:product_id>', methods=['DELETE'])
 def delete_product(product_id):
     try:
-        product = (
-            db.session.query(Product)
-            .options(
-                joinedload(Product.images),
-                joinedload(Product.variants),
+        # กัน autoflush ระหว่างที่เรายังเตรียมข้อมูล/ตรวจเงื่อนไข
+        with db.session.no_autoflush:
+            product = (
+                db.session.query(Product)
+                .options(
+                    selectinload(Product.images),
+                    selectinload(Product.variants),
+                )
+                .get(product_id)
             )
-            .get(product_id)
-        )
-        if not product:
-            return jsonify({"error": "ไม่พบสินค้า"}), 404
+            if not product:
+                return jsonify({"error": "ไม่พบสินค้า"}), 404
 
-        # 1) หา stockin_ids ที่มี entries ของสินค้านี้
-        affected_stockin_ids = [
-            sid for (sid,) in db.session.query(
-                StockInEntry.stockin_id
-            ).filter(
-                StockInEntry.product_id == product_id
-            ).distinct().all()
-        ]
+            # 1) หา StockIn ทั้งหมดที่เกี่ยวข้อง (header ของใบที่เคยรับสินค้านี้)
+            stockins = (
+                db.session.query(StockIn)
+                .join(StockIn.entries)
+                .filter(StockInEntry.product_id == product_id)
+                .options(
+                    joinedload(StockIn.entries),
+                    joinedload(StockIn.batches),
+                )
+                .distinct()
+                .all()
+            )
+            stockin_ids = [si.id for si in stockins]
 
-        # 2) ตรวจ guard: มี batch ใดของสินค้านี้ถูกใช้ไปแล้วหรือไม่?
-        used_batches = db.session.query(StockBatch).filter(
-            StockBatch.product_id == product_id,
-            (StockBatch.qty_remaining < StockBatch.qty_received)
-        ).all()
-        if used_batches:
-            return jsonify({
-                "error": "❌ ลบไม่ได้: มีล็อตของสินค้านี้ถูกใช้งานไปแล้ว",
-                "conflicts": [
-                    {
-                        "batch_id": b.id,
-                        "lot_number": b.lot_number,
-                        "expiry_date": b.expiry_date.isoformat() if b.expiry_date else None,
-                        "qty_received": int(b.qty_received or 0),
-                        "qty_remaining": int(b.qty_remaining or 0),
-                        "stockin_id": int(b.stockin_id or 0),
-                    } for b in used_batches
-                ],
-                "hint": "คืนสต็อก/ยกเลิกรายการขายที่ใช้ล็อตเหล่านี้ก่อน หรือทำ flow ย้าย/ยุติการขายแล้วค่อยลบสินค้า"
-            }), 409
+            # 2) หา Batch ทั้งหมดของสินค้านี้
+            batches = (
+                db.session.query(StockBatch)
+                .filter(StockBatch.product_id == product_id)
+                .all()
+            )
+            batch_ids = [b.id for b in batches]
 
+            # 3) Guard: มี “ประวัติการขาย” ของสินค้านี้หรือไม่ → ถ้ามี ห้ามลบ
+            sale_item_count = db.session.query(SaleItem)\
+                .filter(SaleItem.product_id == product_id).count()
+            if sale_item_count > 0:
+                return jsonify({
+                    "error": "❌ ลบไม่ได้: พบประวัติการขายของสินค้านี้",
+                    "sale_items": sale_item_count
+                }), 409
+
+            # 4) Guard: มีล็อตที่ถูกใช้ไปแล้วหรือไม่ → ถ้ามี ห้ามลบ
+            used_batches = [
+                {
+                    "batch_id": b.id,
+                    "lot_number": b.lot_number,
+                    "qty_received": int(b.qty_received or 0),
+                    "qty_remaining": int(b.qty_remaining or 0),
+                    "stockin_id": int(b.stockin_id or 0),
+                }
+                for b in batches
+                if (b.qty_remaining or 0) < (b.qty_received or 0)
+            ]
+            if used_batches:
+                return jsonify({
+                    "error": "❌ ลบไม่ได้: มีล็อตของสินค้านี้ถูกใช้งานไปแล้ว",
+                    "conflicts": used_batches,
+                    "hint": "ยกเลิกรายการขายที่ใช้ล็อตเหล่านี้ก่อน (หรือทำ flow void/adjust) แล้วค่อยลบสินค้า"
+                }), 409
+
+        # ---- เริ่มลบตามลำดับปลอดภัย ----
         with db.session.begin_nested():
-            # 3) ลบ batches ของสินค้านี้ทั้งหมด
-            db.session.query(StockBatch).filter(
-                StockBatch.product_id == product_id
-            ).delete(synchronize_session=False)
+            # A) SET NULL FK ที่อาจชนตอนลบ batch (กัน FK fail ใน SQLite/schema เก่า)
+            if batch_ids:
+                db.session.query(StockInEntry)\
+                    .filter(StockInEntry.product_id == product_id,
+                            StockInEntry.batch_id.in_(batch_ids))\
+                    .update({StockInEntry.batch_id: None}, synchronize_session=False)
 
-            # 4) ลบ entries ของสินค้านี้ทั้งหมด
-            db.session.query(StockInEntry).filter(
-                StockInEntry.product_id == product_id
-            ).delete(synchronize_session=False)
+            # B) ลบ movement ที่อ้างใบรับเข้า (IN) ของสินค้า (ref_stockin_id)
+            if stockin_ids:
+                db.session.query(StockMovement)\
+                    .filter(StockMovement.ref_stockin_id.in_(stockin_ids))\
+                    .delete(synchronize_session=False)
 
-            # 5) ลบ StockIn header ที่ไม่เหลือ entries แล้ว (ใบว่าง)
-            #    ใช้ลูปแบบปลอดภัย (บาง DB ไม่ชอบ bulk delete พร้อม relationship any())
-            for sid in affected_stockin_ids:
-                cnt = db.session.query(func.count(StockInEntry.id)).filter(
-                    StockInEntry.stockin_id == sid
-                ).scalar()
-                if cnt == 0:
-                    si = db.session.get(StockIn, sid)
-                    if si:
-                        db.session.delete(si)
+            # C) ลบ movement ใด ๆ ที่อ้าง batch ของสินค้านี้ (ปกติจะมีแต่ IN; เผื่อไว้)
+            if batch_ids:
+                db.session.query(StockMovement)\
+                    .filter(StockMovement.batch_id.in_(batch_ids))\
+                    .delete(synchronize_session=False)
 
-            # 6) ลบรูปไฟล์ + image rows
+            # D) ลบ Batch ทีละ instance (อย่า bulk ถ้าเราโหลด instance มาแล้ว)
+            for b in batches:
+                db.session.delete(b)
+
+            # E) ลบ StockInEntry ของสินค้านี้ทั้งหมด
+            db.session.query(StockInEntry)\
+                .filter(StockInEntry.product_id == product_id)\
+                .delete(synchronize_session=False)
+
+            # F) ลบ StockIn header ที่ “ไม่มี entries เหลือ” แล้ว
+            for si in stockins:
+                remain = db.session.query(func.count(StockInEntry.id))\
+                    .filter(StockInEntry.stockin_id == si.id).scalar()
+                if remain == 0:
+                    # ลบไฟล์รูปของใบรับเข้า (ถ้ามี)
+                    try:
+                        _delete_receipt_file(getattr(si, "image_filename", None))
+                    except Exception:
+                        pass
+                    db.session.delete(si)
+
+            # G) ลบรูปภาพไฟล์ + rows ของสินค้า
             for img in list(product.images):
                 try:
                     delete_image_file(img.image_filename)
@@ -259,12 +327,11 @@ def delete_product(product_id):
                     print(f"⚠️ ลบไฟล์รูปไม่สำเร็จ: {img.image_filename}: {file_err}")
                 db.session.delete(img)
 
-            # 7) ลบ variants (ถ้าไม่ได้ตั้ง FK CASCADE)
-            db.session.query(ProductVariant).filter(
-                ProductVariant.product_id == product_id
-            ).delete(synchronize_session=False)
+            # H) ลบ variants ของสินค้า
+            for v in list(product.variants):
+                db.session.delete(v)
 
-            # 8) ลบ product หลัก
+            # I) ลบ product หลัก
             db.session.delete(product)
 
         db.session.commit()
@@ -302,39 +369,108 @@ def get_product_by_id(product_id):
         print("❌ ERROR:", e)
         return jsonify({"error": "เกิดข้อผิดพลาดขณะดึงข้อมูลสินค้า"}), 500
 
-# 6. API Update product - change specific product data by ID
 @product_bp.route('/<int:product_id>', methods=['PATCH'])
 def update_product(product_id):
     try:
         product = Product.query.get_or_404(product_id)
         data = request.form
 
-        # 🎯 1. อัปเดตข้อมูลทั่วไป
-        fields = ["name", "sku", "category", "unit", "cost_price","has_expire"]
-        for field in fields:
-            if field in data:
-                setattr(product, field, data.get(field))
+        # ---------- helpers ----------
+        def to_bool(x):
+            if x is None:
+                return None
+            return str(x).strip().lower() in ('true','1','yes','y','on')
 
-        # 🎯 2. อัปเดต Variants (ลบของเก่า เพิ่มใหม่)
-        ProductVariant.query.filter_by(product_id=product.id).delete()
-        variants_data = json.loads(data.get("variants", "[]"))
-        db.session.bulk_save_objects([
-            ProductVariant(
-                product_id=product.id,
-                sku_suffix=v["sku_suffix"],
-                sale_mode=v["sale_mode"],
-                pack_size=v["pack_size"],
-                selling_price=v["selling_price"],
-                is_active=v["is_active"]
-            ) for v in variants_data
-        ])
+        def to_float(x, field):
+            if x is None or x == '':
+                return None
+            try:
+                return float(x)
+            except ValueError:
+                raise ValueError(f"{field} must be a number")
 
-        # 🎯 3.อัพรูปภาพใหม่ (ถ้ามีอัปโหลดใหม่มา)
+        # ---------- 1) update product fields with casting ----------
+        if 'name' in data:       product.name = data['name']
+        if 'sku' in data:        product.sku = data['sku']
+        if 'category' in data:   product.category = data['category']
+        if 'unit' in data:       product.unit = data['unit']
+        if 'cost_price' in data:
+            val = to_float(data.get('cost_price'), 'cost_price')
+            if val is None:
+                product.cost_price = 0.0
+            else:
+                product.cost_price = val
+        if 'has_expire' in data:
+            bv = to_bool(data.get('has_expire'))
+            if bv is None:
+                # ถ้าอยาก ignore ให้ไม่ตั้งค่าเมื่อ None ก็ลบทิ้ง 2 บรรทัดนี้ได้
+                return jsonify({"error": "❌ has_expire must be boolean"}), 400
+            product.has_expire = bv
+
+        # ---------- 2) upsert variants (no bulk delete) ----------
+        variants_payload = json.loads(data.get("variants", "[]"))
+
+        # map ของเก่า
+        old_variants = {v.id: v for v in ProductVariant.query.filter_by(product_id=product.id).all()}
+        seen_ids = set()
+
+        for v in variants_payload:
+            vid = v.get("id")
+            # casting
+            try:
+                pack_size = int(v["pack_size"])
+            except (KeyError, ValueError, TypeError):
+                return jsonify({"error": "❌ variant.pack_size must be integer"}), 400
+
+            try:
+                selling_price = float(v["selling_price"])
+            except (KeyError, ValueError, TypeError):
+                return jsonify({"error": "❌ variant.selling_price must be number"}), 400
+
+            is_active = bool(v.get("is_active", True))
+
+            if vid and vid in old_variants:
+                # update
+                ov = old_variants[vid]
+                ov.sku_suffix    = v["sku_suffix"]
+                ov.sale_mode     = v["sale_mode"]
+                ov.pack_size     = pack_size
+                ov.selling_price = selling_price
+                ov.is_active     = is_active
+                seen_ids.add(vid)
+            else:
+                # create
+                nv = ProductVariant(
+                    product_id=product.id,
+                    sku_suffix=v["sku_suffix"],
+                    sale_mode=v["sale_mode"],
+                    pack_size=pack_size,
+                    selling_price=selling_price,
+                    is_active=is_active
+                )
+                db.session.add(nv)
+
+        # ตัวที่ถูกเอาออกจาก payload
+        removed = [ov for oid, ov in old_variants.items() if oid not in seen_ids]
+        for ov in removed:
+            used_in_stockin = db.session.query(StockInEntry.id)\
+                .filter(StockInEntry.variant_id == ov.id).first()
+            used_in_sale = db.session.query(SaleItem.id)\
+                .filter(SaleItem.variant_id == ov.id).first()
+            if used_in_stockin or used_in_sale:
+                ov.is_active = False  # soft remove
+            else:
+                db.session.delete(ov)
+
+        # ---------- 3) images ----------
         main_image = request.files.get("main_image")
         if main_image:
             old_main = ProductImage.query.filter_by(product_id=product.id, is_main=True).first()
             if old_main:
-                delete_image_file(old_main.image_filename)
+                try:
+                    delete_image_file(old_main.image_filename)
+                except Exception:
+                    pass
                 db.session.delete(old_main)
 
             new_filename = save_image(main_image)
@@ -346,12 +482,15 @@ def update_product(product_id):
                 filename = save_image(image)
                 db.session.add(ProductImage(product_id=product.id, image_filename=filename, is_main=False))
 
-
-        # 4.จัดการรูปภาพที่เราลบออกไปดูใน images_to_delete
         images_to_delete = request.form.getlist("images_to_delete")
         for filename in images_to_delete:
-            delete_image_file(filename)
-            ProductImage.query.filter_by(image_filename=filename, product_id=product.id).delete()
+            try:
+                delete_image_file(filename)
+            except Exception:
+                pass
+            ProductImage.query\
+                .filter_by(image_filename=filename, product_id=product.id)\
+                .delete(synchronize_session=False)
 
         db.session.commit()
         return jsonify({"message": "✅ Product updated successfully!"}), 200
@@ -360,13 +499,14 @@ def update_product(product_id):
         db.session.rollback()
         return jsonify({"error": f"❌ File not found: {str(e)}"}), 400
 
-    except ValueError as e:
+    except (ValueError, TypeError) as e:
         db.session.rollback()
         return jsonify({"error": f"❌ Invalid data: {str(e)}"}), 400
 
     except SQLAlchemyError as e:
         db.session.rollback()
-        return jsonify({"error": "❌ Database error occurred."}), 500
+        import traceback; traceback.print_exc()
+        return jsonify({"error": f"❌ DB: {str(e)}"}), 500
 
     except Exception as e:
         db.session.rollback()

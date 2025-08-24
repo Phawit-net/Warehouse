@@ -37,8 +37,8 @@ type SalesForm = {
   customer_name: string;
   province: string;
   variant_id: number;
-  quantity: number;
-  sale_price: number;
+  quantity_pack: number;
+  unit_price_at_sale: number;
   channel_id: number;
   shipping_fee: number;
   platform_discount: number;

@@ -11,6 +11,7 @@ type Props = {
   onChange: (file: File | null) => void;
   imagePreview: string;
   onRemovePreview?: () => void;
+  required?: boolean;
 };
 
 const ImageUploader = React.memo(
@@ -22,6 +23,7 @@ const ImageUploader = React.memo(
     onChange,
     imagePreview,
     onRemovePreview,
+    required = false,
   }: Props) => {
     const inputRef = useRef<HTMLInputElement | null>(null);
     const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -45,20 +47,25 @@ const ImageUploader = React.memo(
       <div
         className={`flex flex-col mb-${margin} ${isLabel ? "gap-1" : "gap-0"}`}
       >
-        {isLabel && <label className="text-md font-semibold">{label}</label>}
+        {isLabel && (
+          <label className="text-md font-semibold">
+            {label}
+            {required && <label className="text-red-600"> *</label>}
+          </label>
+        )}
         {imagePreview ? (
           <div
-            className={`group border-2 bg-amber-300 border-gray-300 rounded-xl w-full h-80 flex cursor-pointer relative overflow-hidden`}
+            className={`group border-1 border-gray-200 rounded-sm w-full h-80 flex cursor-pointer relative overflow-hidden hover:ring-1 hover:ring-[#ffc596] hover:border-[#ffc596] transition`}
           >
-            <div className="relative w-full rounded overflow-hidden group">
+            <div className="relative w-full rounded-sm overflow-hidden group">
               <Image
-                className="object-contain rounded-2xl"
+                className="object-contain rounded-sm"
                 src={imagePreview}
                 alt="edit-preview"
                 fill
                 sizes="auto"
               />
-              <div className="absolute top-1 right-1 text-white flex gap-3 text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100">
+              <div className="absolute top-1 right-1 text-white flex gap-3 text-xs px-2 py-1 rounded-sm opacity-0 group-hover:opacity-100">
                 <button
                   type="button"
                   className="text-gray-700 cursor-pointer bg-[#ffe4ce] p-1.5 rounded-sm"
@@ -86,7 +93,7 @@ const ImageUploader = React.memo(
           <>
             {image ? (
               <div
-                className={`group border-2 bg-red-500 border-gray-300 rounded-xl w-full h-80 flex cursor-pointer relative overflow-hidden`}
+                className={`group border-1 border-gray-200 rounded-sm w-full h-80 flex cursor-pointer relative overflow-hidden hover:ring-1 hover:ring-[#ffc596] hover:border-[#ffc596] transition`}
               >
                 <div className="relative w-full rounded overflow-hidden group">
                   <Image
@@ -96,7 +103,7 @@ const ImageUploader = React.memo(
                     fill
                     sizes="auto"
                   />
-                  <div className="absolute top-1 right-1 text-white flex gap-3 text-xs px-2 py-1 rounded opacity-0 group-hover:opacity-100">
+                  <div className="absolute top-1 right-1 text-white flex gap-3 text-xs px-2 py-1 rounded-sm opacity-0 group-hover:opacity-100">
                     <button
                       type="button"
                       className="text-gray-700 cursor-pointer bg-[#ffe4ce] p-1.5 rounded-sm"
@@ -150,7 +157,7 @@ const ImageUploader = React.memo(
             ) : (
               <div
                 onClick={handleClickUpload}
-                className={`border-2 border-dashed border-gray-300 rounded-xl w-full h-80 flex items-center justify-center cursor-pointer hover:border-[#ffc596] transition`}
+                className={`border-1 border-gray-200 rounded-sm w-full h-80 flex items-center justify-center cursor-pointer hover:ring-1 hover:ring-[#ffc596] hover:border-[#ffc596] transition`}
               >
                 <div className="flex flex-col items-center gap-3">
                   <svg

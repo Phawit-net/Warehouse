@@ -114,7 +114,7 @@ const Table = ({ headerColumns, data, handleDelete }: Props) => {
                                 <IconsButton
                                   type="edit"
                                   color="blue"
-                                  handleClick={() => handleDelete(row.id)}
+                                  handleClick={() => handleDelete(row.sale_id)}
                                 />
                                 <IconsButton
                                   type="import"

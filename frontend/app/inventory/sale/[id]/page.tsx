@@ -46,6 +46,7 @@ const StockInPage = () => {
     : "";
 
   const handleDelete = async (id: number) => {
+    console.log(id);
     try {
       await axios.delete(`http://localhost:5001/api/sale/${id}`);
       salesOrderMutate();
@@ -53,6 +54,8 @@ const StockInPage = () => {
       console.error("❌ Failed to delete:", error);
     }
   };
+
+  console.log("saleOrder", saleOrder);
 
   return (
     <main className="min-h-screen">

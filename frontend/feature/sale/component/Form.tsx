@@ -65,14 +65,13 @@ const Form = ({
 
   const buildFormData = useCallback((data: SalesForm): FormData => {
     const formData = new FormData();
-    formData.append("product_id", product.id.toString());
     formData.append("variant_id", data.variant_id.toString());
     formData.append("channel_id", data.channel_id.toString());
     formData.append("sale_date", formatISO(data.sale_date));
     formData.append("customer_name", data.customer_name);
     formData.append("province", data.province);
-    formData.append("quantity", data.quantity.toString());
-    formData.append("sale_price", data.sale_price.toString());
+    formData.append("quantity_pack", data.quantity_pack.toString());
+    formData.append("unit_price_at_sale", data.unit_price_at_sale.toString());
     formData.append("shipping_fee", data.shipping_fee.toString());
     formData.append("platform_discount", data.platform_discount.toString());
     formData.append("shop_discount", data.shop_discount.toString());
@@ -85,7 +84,10 @@ const Form = ({
     const formData = buildFormData(data);
 
     try {
-      await axios.post("http://localhost:5001/api/sale", formData);
+      await axios.post(
+        `http://localhost:5001/api/sale/${product.id}`,
+        formData
+      );
       reset();
       salesOrderMutate();
     } catch (error) {
@@ -138,14 +140,14 @@ const Form = ({
             />
             <TextInput
               placeholder="จำนวน"
-              name="quantity"
+              name="quantity_pack"
               label="จำนวน"
               register={register}
               type="number"
             />
             <TextInput
               placeholder="ราคาขายต่อหน่วย"
-              name="sale_price"
+              name="unit_price_at_sale"
               label="ราคาขายต่อหน่วย"
               register={register}
               type="number"
