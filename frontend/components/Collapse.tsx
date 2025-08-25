@@ -58,7 +58,7 @@ const Collapse = ({
           open ? "grid-rows-[1fr]" : "grid-rows-[0fr]"
         } overflow-hidden`}
       >
-        <div className="min-h-0 px-5 text-sm text-gray-700 dark:text-gray-300">
+        <div className="min-h-0 px-5 text-gray-700 dark:text-gray-300">
           {children}
         </div>
       </div>

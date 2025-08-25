@@ -89,7 +89,7 @@ const Table = ({ headerColumns, data, handleDelete }: Props) => {
                           : ""
                       } ${
                         isDetailExpanded
-                          ? "border-x-1 border-t rounded-t-2xl shadow-md"
+                          ? "border-x-1 border-t rounded-t-sm shadow-sm"
                           : "border-x-1 border-x-white"
                       } `}
                     >
@@ -101,11 +101,11 @@ const Table = ({ headerColumns, data, handleDelete }: Props) => {
                             className="py-2"
                           >
                             {!mainImage ? (
-                              <div className="w-[50px] h-[50px] bg-gray-100 rounded-xl flex items-center justify-center text-xs text-gray-400">
+                              <div className="w-[50px] h-[50px] bg-gray-100 rounded-sm flex items-center justify-center text-xs text-gray-400">
                                 ไม่มีรูป
                               </div>
                             ) : (
-                              <div className="relative w-[50px] h-[50px] border border-gray-300 rounded-xl">
+                              <div className="relative w-[50px] h-[50px] border border-gray-300 rounded-sm">
                                 <Image
                                   className="object-contain p-2"
                                   src={imageUrl}
@@ -224,8 +224,8 @@ const Table = ({ headerColumns, data, handleDelete }: Props) => {
                       }}
                       className={`
                         transition-all duration-500
-                        bg-white px-6 border-gray-200  rounded-b-2xl
-                        grid grid-cols-3 shadow-md
+                        bg-white px-6 border-gray-200  rounded-b-sm
+                        grid grid-cols-3 shadow-sm
                         ${
                           !isDetailExpanded
                             ? "py-0"
@@ -234,9 +234,9 @@ const Table = ({ headerColumns, data, handleDelete }: Props) => {
                       `}
                     >
                       {mainImage && (
-                        <div className="w-[150px] h-[150px] relative border border-gray-200 rounded-2xl">
+                        <div className="w-[150px] h-[150px] relative border border-gray-200 rounded-sm">
                           <Image
-                            className="object-contain rounded-2xl bg-white p-2"
+                            className="object-contain rounded-sm bg-white p-2"
                             src={imageUrl}
                             alt="My Image"
                             fill

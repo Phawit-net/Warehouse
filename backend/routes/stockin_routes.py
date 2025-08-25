@@ -508,3 +508,77 @@ def delete_stock_in(stock_in_id):
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": f"❌ Failed to delete StockIn: {str(e)}"}), 500
+    
+
+@stockin_bp.route('/detail/<int:stockin_id>', methods=['GET'])
+def get_stockin_detail(stockin_id):
+    try:
+        si = (
+            db.session.query(StockIn)
+            .options(
+                joinedload(StockIn.entries)
+                    .joinedload(StockInEntry.variant),
+                joinedload(StockIn.entries)
+                    .joinedload(StockInEntry.batch),
+                joinedload(StockIn.batches),
+            )
+            .get(stockin_id)
+        )
+        if not si:
+            return jsonify({"error": "❌ StockIn not found"}), 404
+
+        # lots summary
+        lots = []
+        for b in (si.batches if isinstance(si.batches, list) else si.batches.all()):
+            lots.append({
+                "batch_id": b.id,
+                "lot_number": b.lot_number,
+                "expiry_date": b.expiry_date.isoformat() if b.expiry_date else None,
+                "qty_received": int(b.qty_received or 0),
+                "qty_remaining": int(b.qty_remaining or 0),
+            })
+
+        # entries
+        entries = []
+        for e in si.entries:
+            pack = int(e.pack_size_at_receipt or 0)
+            qty  = int(e.quantity or 0)
+            variant_label = e.variant.sale_mode if e.variant else e.custom_sale_mode
+            entries.append({
+                "entry_id": e.id,
+                "variant_id": e.variant_id,
+                "variant_label": variant_label,
+                "quantity": qty,
+                "pack_size_at_receipt": pack,
+                "custom_sale_mode": e.custom_sale_mode,
+                "custom_pack_size": e.custom_pack_size,
+                "total_unit": pack * qty,
+                "batch_id": e.batch_id,
+                "lot_number": e.batch.lot_number if e.batch else None,
+            })
+
+        # ถ้าใบนี้ใช้ล็อตเดียวทั้งใบ ดึงจากล็อตแรก (optional)
+        lot_number_hdr = None
+        if lots:
+            # เงื่อนไข: ทุก batch มี lot เดียวกัน
+            uniq = {l["lot_number"] for l in lots}
+            if len(uniq) == 1:
+                lot_number_hdr = list(uniq)[0]
+
+        return jsonify({
+            "id": si.id,
+            "doc_number": si.doc_number,
+            "created_at": si.created_at.isoformat() if si.created_at else None,
+            "expiry_date": si.expiry_date.isoformat() if si.expiry_date else None,
+            "note": si.note,
+            "image_filename": si.image_filename,
+            "product": {"id": si.entries[0].product_id} if si.entries else None,
+
+            "lot_number": lot_number_hdr,
+            "lots": lots,
+            "entries": entries,
+            "total_unit": sum(x["total_unit"] for x in entries),
+        }), 200
+
+    except Exception as e:
+        return jsonify({"error": f"❌ Failed to fetch stock-in: {str(e)}"}), 500

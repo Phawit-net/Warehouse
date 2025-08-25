@@ -10,7 +10,7 @@ const SubmitButton = React.memo(({ text, form }: Props) => {
     <button
       type="submit"
       form={form}
-      className="bg-[#f49b50] p-2 px-3 text-white flex justify-center items-center justify-items-center gap-2 rounded-sm"
+      className="bg-[#f49b50] p-2 px-3 text-white flex justify-center items-center justify-items-center gap-2 rounded-sm cursor-pointer"
     >
       <span>{text}</span>
     </button>

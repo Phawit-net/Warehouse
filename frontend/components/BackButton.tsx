@@ -25,7 +25,7 @@ const BackButton = React.memo(({ text, fallback = "/" }: Props) => {
   return (
     <button
       type="button"
-      className="bg-[#092C4C] p-2 px-3 text-white flex justify-center items-center justify-items-center gap-2 rounded-sm"
+      className="bg-[#092C4C] p-2 px-3 text-white flex justify-center items-center justify-items-center gap-2 rounded-sm  cursor-pointer"
       onClick={onClick}
     >
       <svg

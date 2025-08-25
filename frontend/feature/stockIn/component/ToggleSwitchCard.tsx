@@ -11,8 +11,10 @@ type Props = {
 const ToggleSwitchCard = ({ label, isToggle, children, onChange }: Props) => {
   return (
     <div
-      className={`flex flex-col gap-2 border-2 p-3 mx-2 mb-2 rounded-sm ${
-        isToggle ? "border-[#f49b50]" : "border-gray-300"
+      className={`flex flex-col gap-2 border-1 p-3  mb-2 rounded-sm transform duration-200 ${
+        isToggle
+          ? "hover:ring-2 hover:ring-[#ffc596] hover:border-white"
+          : "border-gray-200"
       }`}
     >
       <div className="flex items-center justify-between ">

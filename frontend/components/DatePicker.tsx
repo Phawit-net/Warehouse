@@ -39,10 +39,10 @@ export function DatePicker({
           <Button
             variant={"outline"}
             className={cn(
-              "h-[40px] shadow-none justify-start text-md font-normal border-none rounded bg-[#fff0e4] hover:bg-[#fff0e4] focus:outline-none text-gray-500 focus:ring-2 focus:ring-[#ffc596]"
+              "h-[40px] shadow-none justify-start text-md font-normal rounded-sm transition duration-200 hover:bg-white focus:outline-none text-gray-500 focus:ring-2 focus:ring-[#ffc596]"
             )}
           >
-            <CalendarIcon className="mr-2 h-4 w-4" />
+            {/* <CalendarIcon className="mr-2 h-4 w-4" /> */}
             {field.value ? (
               format(field.value, "dd/MM/yyyy")
             ) : (

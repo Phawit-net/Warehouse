@@ -1,4 +1,4 @@
-import React from "react";
+import React, { Dispatch, SetStateAction } from "react";
 import Image from "next/image";
 import IconsButton from "@/components/IconsButton";
 
@@ -6,9 +6,17 @@ type Props = {
   headerColumns: HeaderColumn[];
   data: TableData[];
   handleDelete: (id: number) => Promise<void>;
+  handleEdit: (id: number | null) => void;
+  openCollapse: () => void;
 };
 
-const Table = ({ headerColumns, data, handleDelete }: Props) => {
+const Table = ({
+  headerColumns,
+  data,
+  handleDelete,
+  handleEdit,
+  openCollapse,
+}: Props) => {
   const totalVisualColumns = headerColumns.length;
   const getInnerGridColsClasses = () => {
     return `grid-cols-[1fr_1fr_1fr_1fr_1.5fr_1fr_1.5fr_0.5fr]`;
@@ -19,7 +27,7 @@ const Table = ({ headerColumns, data, handleDelete }: Props) => {
     <div className="overflow-x-auto relative">
       <table className="w-full text-md text-left text-gray-600 mb-2">
         <thead
-          className={`text-sm text-gray-300 uppercase transform transition-transform duration-300 border-b border-gray-200 `}
+          className={`text-sm text-gray-600 uppercase transform transition-transform duration-300 border-y border-gray-400 `}
         >
           <tr>
             <th colSpan={totalVisualColumns} scope="colgroup" className="p-0">
@@ -43,7 +51,7 @@ const Table = ({ headerColumns, data, handleDelete }: Props) => {
               <React.Fragment key={rowIndex}>
                 <tr
                   key={rowIndex}
-                  className={`bg-white hover:bg-gray-50 border-gray-200 border-b-1 `}
+                  className={`bg-white hover:bg-gray-50 border-gray-400 border-b-1 `}
                 >
                   <td className="p-0">
                     <div
@@ -88,11 +96,11 @@ const Table = ({ headerColumns, data, handleDelete }: Props) => {
                               className="py-2"
                             >
                               {!images ? (
-                                <div className="w-[50px] h-[50px] bg-gray-100 rounded-xl flex items-center justify-center text-xs text-gray-400">
+                                <div className="w-[50px] h-[50px] bg-gray-100 rounded-sm flex items-center justify-center text-xs text-gray-400">
                                   ไม่มีรูป
                                 </div>
                               ) : (
-                                <div className="relative w-[50px] h-[50px] border border-gray-300 rounded-xl">
+                                <div className="relative w-[50px] h-[50px] border border-gray-300 rounded-sm">
                                   <Image
                                     className="object-contain p-2"
                                     src={imageUrl}
@@ -114,12 +122,15 @@ const Table = ({ headerColumns, data, handleDelete }: Props) => {
                                 <IconsButton
                                   type="edit"
                                   color="blue"
-                                  handleClick={() => handleDelete(row.id)}
+                                  handleClick={() => {
+                                    handleEdit(row.id);
+                                    openCollapse();
+                                  }}
                                 />
                                 <IconsButton
                                   type="import"
                                   color="blue"
-                                  handleClick={() => console.log("CLICK")}
+                                  handleClick={() => handleDelete(row.id)}
                                 />
                               </div>
                             </div>

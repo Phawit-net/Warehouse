@@ -23,7 +23,7 @@ const TextArea = ({
     >
       {isLabel && <label className="text-md font-semibold">{label}</label>}
       <textarea
-        className="p-2 rounded-sm bg-[#fff0e4] focus:outline-none text-gray-500 focus:ring-2 focus:ring-[#ffc596] min-h-[80px] max-h-[120px]"
+        className="p-2 rounded-sm border-1 border-gray-200 focus:outline-none text-gray-500 focus:border-white focus:ring-2 focus:ring-[#ffc596] min-h-[80px] max-h-[120px]"
         {...register(name)}
         placeholder={placeholder}
         rows={3}
