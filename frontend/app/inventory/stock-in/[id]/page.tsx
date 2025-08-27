@@ -71,7 +71,6 @@ const StockInPage = () => {
       console.error("❌ Failed to delete:", error);
     }
   };
-  console.log("stockin", stockin);
 
   const openCollapse = () => {
     setFormCollapsed(false);

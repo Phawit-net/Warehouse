@@ -107,7 +107,7 @@ const Table = ({ headerColumns, data, handleDelete }: Props) => {
                             ) : (
                               <div className="relative w-[50px] h-[50px] border border-gray-300 rounded-sm">
                                 <Image
-                                  className="object-contain p-2"
+                                  className="object-contain"
                                   src={imageUrl}
                                   alt="Product"
                                   fill

@@ -19,7 +19,7 @@ const Collapse = ({
 
   return (
     <div
-      className={`rounded-sm border border-gray-200 bg-white  dark:bg-neutral-900 dark:border-neutral-800 ${className} mb-5`}
+      className={`rounded-sm border border-gray-200 bg-white ${className} mb-5`}
     >
       <button
         type="button"

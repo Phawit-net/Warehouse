@@ -200,19 +200,26 @@ const Form = ({
   );
 
   const onSubmit: SubmitHandler<StockInForm> = async (data: StockInForm) => {
-    console.log("submit", data);
+    console.log("submit", data, "editingId", editingId);
     const formData = buildFormData(data);
-    formData.forEach((value, key) => {
-      console.log(key, value);
-    });
-    // try {
-    //   await axios.post("http://localhost:5001/api/stock-in", formData);
-    //   reset();
-    //   onSuccess();
-    // } catch (error) {
-    //   console.error("❌ Upload failed:", error);
-    //   // TODO: Add toast / error UI
-    // }
+
+    try {
+      if (editingId) {
+        await axios.patch(
+          `http://localhost:5001/api/stock-in/${editingId}`,
+          formData
+        );
+        handleCancel();
+        handleEdit(null);
+      } else {
+        await axios.post("http://localhost:5001/api/stock-in", formData);
+      }
+      reset();
+      onSuccess();
+    } catch (error) {
+      console.error("❌ Upload failed:", error);
+      // TODO: Add toast / error UI
+    }
   };
 
   const onImageChange = useCallback(
