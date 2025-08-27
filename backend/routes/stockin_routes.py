@@ -397,6 +397,11 @@ def get_stockins_by_product(product_id):
 
             lots = list(lots_map.values())
 
+            locked = any(
+            (b.qty_remaining or 0) < (b.qty_received or 0)
+            for b in (si.batches if isinstance(si.batches, list) else si.batches.all())
+        )
+
             result.append({
                 # ----- Header -----
                 "id": si.id,
@@ -414,6 +419,7 @@ def get_stockins_by_product(product_id):
                 # ----- Entries detail -----
                 "entries": entries_data,
                 "total_unit": sum(e["total_unit"] for e in entries_data),
+                "locked": locked,
             })
 
         return jsonify(result), 200
@@ -565,6 +571,11 @@ def get_stockin_detail(stockin_id):
             if len(uniq) == 1:
                 lot_number_hdr = list(uniq)[0]
 
+        locked = any(
+            (b.qty_remaining or 0) < (b.qty_received or 0)
+            for b in (si.batches if isinstance(si.batches, list) else si.batches.all())
+        )
+
         return jsonify({
             "id": si.id,
             "doc_number": si.doc_number,
@@ -578,6 +589,7 @@ def get_stockin_detail(stockin_id):
             "lots": lots,
             "entries": entries,
             "total_unit": sum(x["total_unit"] for x in entries),
+            "locked": locked,
         }), 200
 
     except Exception as e:

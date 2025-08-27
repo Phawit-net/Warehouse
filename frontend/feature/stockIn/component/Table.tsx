@@ -22,7 +22,6 @@ const Table = ({
     return `grid-cols-[1fr_1fr_1fr_1fr_1.5fr_1fr_1.5fr_0.5fr]`;
   };
   const innerGridColsClasses = getInnerGridColsClasses();
-
   return (
     <div className="overflow-x-auto relative">
       <table className="w-full text-md text-left text-gray-600 mb-2">
@@ -122,6 +121,7 @@ const Table = ({
                                 <IconsButton
                                   type="edit"
                                   color="blue"
+                                  disabled={row.locked}
                                   handleClick={() => {
                                     handleEdit(row.id);
                                     openCollapse();

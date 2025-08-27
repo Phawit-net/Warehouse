@@ -19,7 +19,7 @@ const Table = ({ headerColumns, data, handleDelete }: Props) => {
     <div className="overflow-x-auto relative">
       <table className="w-full text-md text-left text-gray-600 mb-2">
         <thead
-          className={`text-sm text-gray-300 uppercase transform transition-transform duration-300 border-b border-gray-200 `}
+          className={`text-sm text-gray-600 uppercase transform transition-transform duration-300 border-y border-gray-400 `}
         >
           <tr>
             <th colSpan={totalVisualColumns} scope="colgroup" className="p-0">
@@ -43,7 +43,7 @@ const Table = ({ headerColumns, data, handleDelete }: Props) => {
               <React.Fragment key={rowIndex}>
                 <tr
                   key={rowIndex}
-                  className={`bg-white hover:bg-gray-50 border-gray-200 border-b-1 `}
+                  className={`bg-white hover:bg-gray-50 border-gray-400 border-b-1 `}
                 >
                   <td className="p-0">
                     <div
@@ -114,12 +114,12 @@ const Table = ({ headerColumns, data, handleDelete }: Props) => {
                                 <IconsButton
                                   type="edit"
                                   color="blue"
-                                  handleClick={() => handleDelete(row.sale_id)}
+                                  handleClick={() => console.log("CLICK")}
                                 />
                                 <IconsButton
                                   type="import"
                                   color="blue"
-                                  handleClick={() => console.log("CLICK")}
+                                  handleClick={() => handleDelete(row.sale_id)}
                                 />
                               </div>
                             </div>

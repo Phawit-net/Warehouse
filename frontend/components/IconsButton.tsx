@@ -7,6 +7,7 @@ type Props = {
   type: "edit" | "delete" | "import" | "sale";
   handleClick?: (e: { stopPropagation: () => void }) => void;
   onMouseEnter?: () => void;
+  disabled?: boolean;
 };
 
 const colorMap = {
@@ -14,11 +15,22 @@ const colorMap = {
   red: "bg-[#ef6b6b] hover:bg-[#d85454]",
 };
 
-const IconsButton = ({ color, type, handleClick, onMouseEnter }: Props) => {
+const IconsButton = ({
+  color,
+  type,
+  handleClick,
+  onMouseEnter,
+  disabled = false,
+}: Props) => {
   return (
     <button
       type="button"
-      className={`${colorMap[color]} w-fit rounded-md p-1 cursor-pointer`}
+      disabled={disabled}
+      className={`border-1 border-gray-200 w-fit rounded-sm p-1 cursor-pointer hover:bg-gray-200 transition duration-200 ${
+        disabled
+          ? "disabled:bg-gray-300 disabled:cursor-not-allowed"
+          : "cursor-pointer"
+      } `}
       onMouseEnter={onMouseEnter}
       onClick={handleClick}
     >
@@ -29,7 +41,9 @@ const IconsButton = ({ color, type, handleClick, onMouseEnter }: Props) => {
           viewBox="0 0 24 24"
           strokeWidth="1.5"
           stroke="currentColor"
-          className="h-5 w-5 text-white"
+          className={`h-5 w-5 ${
+            disabled ? "text-gray-400" : "hover:text-[#f49b50]"
+          }  `}
         >
           <path
             strokeLinecap="round"
@@ -44,7 +58,9 @@ const IconsButton = ({ color, type, handleClick, onMouseEnter }: Props) => {
           viewBox="0 0 24 24"
           strokeWidth="1.5"
           stroke="currentColor"
-          className="h-5 w-5 text-white"
+          className={`h-5 w-5 ${
+            disabled ? "text-gray-400" : "hover:text-[#f49b50]"
+          }  `}
         >
           <path
             strokeLinecap="round"
@@ -59,7 +75,9 @@ const IconsButton = ({ color, type, handleClick, onMouseEnter }: Props) => {
           viewBox="0 0 24 24"
           strokeWidth="1.5"
           stroke="currentColor"
-          className="h-5 w-5 text-white"
+          className={`h-5 w-5 ${
+            disabled ? "text-gray-400" : "hover:text-[#f49b50]"
+          }  `}
         >
           <path
             strokeLinecap="round"
@@ -74,7 +92,9 @@ const IconsButton = ({ color, type, handleClick, onMouseEnter }: Props) => {
           viewBox="0 0 24 24"
           strokeWidth="1.5"
           stroke="currentColor"
-          className="h-5 w-5 text-white"
+          className={`h-5 w-5 ${
+            disabled ? "text-gray-400" : "hover:text-[#f49b50]"
+          }  `}
         >
           <path
             strokeLinecap="round"

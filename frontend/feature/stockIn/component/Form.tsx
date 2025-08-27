@@ -202,14 +202,17 @@ const Form = ({
   const onSubmit: SubmitHandler<StockInForm> = async (data: StockInForm) => {
     console.log("submit", data);
     const formData = buildFormData(data);
-    try {
-      await axios.post("http://localhost:5001/api/stock-in", formData);
-      reset();
-      onSuccess();
-    } catch (error) {
-      console.error("❌ Upload failed:", error);
-      // TODO: Add toast / error UI
-    }
+    formData.forEach((value, key) => {
+      console.log(key, value);
+    });
+    // try {
+    //   await axios.post("http://localhost:5001/api/stock-in", formData);
+    //   reset();
+    //   onSuccess();
+    // } catch (error) {
+    //   console.error("❌ Upload failed:", error);
+    //   // TODO: Add toast / error UI
+    // }
   };
 
   const onImageChange = useCallback(

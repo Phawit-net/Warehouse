@@ -51,7 +51,7 @@ const VariantSelect = ({
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
-        className="flex w-full items-center gap-2 justify-between text-left text-gray-500 px-3 py-2 rounded-sm bg-[#fff0e4] focus:ring-2 focus:ring-[#ffc596]"
+        className="flex w-full items-center gap-2 justify-between text-left text-gray-500 px-3 py-2 rounded-sm border border-gray-200 focus:border-white focus:ring-2 focus:ring-[#ffc596]"
       >
         {value
           ? `${options.find((o) => o.id === value)?.sale_mode} (${

@@ -154,20 +154,19 @@ const Form = ({
             />
           </div>
           <div className="flex flex-col">
-            <div className="grid grid-cols-[1fr_auto] gap-3 items-center">
-              <Controller
-                name="channel_id"
-                control={control}
-                render={({ field }) => (
-                  <ChannelSelect
-                    label="ช่องทางการขาย"
-                    options={salesChannel}
-                    value={field.value}
-                    onChange={field.onChange}
-                  />
-                )}
-              />
-              <div className="flex flex-col">
+            <Controller
+              name="channel_id"
+              control={control}
+              render={({ field }) => (
+                <ChannelSelect
+                  label="ช่องทางการขาย"
+                  options={salesChannel}
+                  value={field.value}
+                  onChange={field.onChange}
+                />
+              )}
+            />
+            {/* <div className="flex flex-col">
                 <button
                   className="border-1 px-5 py-2"
                   type="button"
@@ -175,8 +174,7 @@ const Form = ({
                 >
                   ตั้งค่า
                 </button>
-              </div>
-            </div>
+              </div> */}
             <TextInput
               placeholder="ค่าจัดส่ง (ผู้ซื้อชำระ)"
               name="shipping_fee"

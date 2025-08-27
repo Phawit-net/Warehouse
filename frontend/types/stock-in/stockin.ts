@@ -7,6 +7,7 @@ type StockInForm = {
   entries: {
     variant_id: number;
     quantity?: number | null;
+    custom_quantity?: number | null;
     custom_sale_mode?: string | null;
     custom_pack_size?: number | null;
     pack_size_at_receipt?: number | null;

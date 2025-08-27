@@ -10,6 +10,7 @@ import Table from "@/feature/stockIn/component/Table";
 import axios from "axios";
 import BackButton from "@/components/BackButton";
 import { useRef, useState } from "react";
+import { scrollToFormTop } from "@/hooks/scrollToTop";
 
 const StockInPage = () => {
   const params = useParams<{ id: string }>();
@@ -21,6 +22,7 @@ const StockInPage = () => {
 
   const handleEdit = (id: number | null) => {
     setEditingId(id);
+    scrollToFormTop(formRef);
   };
 
   const { data: product, error: productError } = useSWR<Products>(
@@ -69,13 +71,13 @@ const StockInPage = () => {
       console.error("❌ Failed to delete:", error);
     }
   };
+  console.log("stockin", stockin);
 
   const openCollapse = () => {
     setFormCollapsed(false);
   };
-  console.log("stockinDetail", stockinDetail);
   return (
-    <div className="min-h-dvh p-6 ">
+    <div ref={formRef} className="min-h-dvh p-6">
       <div className="flex justify-between items-center my-3">
         <h2 className="text-3xl font-semibold">
           รับเข้าสินค้า : {product.name}
@@ -83,7 +85,6 @@ const StockInPage = () => {
         <BackButton text="Back to Inventory" fallback="/inventory" />
       </div>
       <section
-        ref={formRef}
         className={`transition-[grid-template-rows] duration-300 grid rounded-sm ${
           formCollapsed
             ? "grid-rows-[0fr] border-0 ring-white p-0"
