@@ -1,6 +1,7 @@
 import React, { Dispatch, SetStateAction } from "react";
 import Image from "next/image";
 import IconsButton from "@/components/IconsButton";
+import EditGuardButton from "./EditGuardButton";
 
 type Props = {
   headerColumns: HeaderColumn[];
@@ -118,11 +119,10 @@ const Table = ({
                               className="py-2"
                             >
                               <div className="flex gap-2">
-                                <IconsButton
-                                  type="edit"
-                                  color="blue"
-                                  disabled={row.locked}
-                                  handleClick={() => {
+                                <EditGuardButton
+                                  locked={row.locked} // ใส่ true ถ้ามีการขายแล้ว/เงื่อนไขล็อก
+                                  reason={row.lock_reason} // อธิบายสั้น ๆ
+                                  onProceed={() => {
                                     handleEdit(row.id);
                                     openCollapse();
                                   }}

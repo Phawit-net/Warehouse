@@ -1,5 +1,5 @@
 import { DatePicker } from "@/components/DatePicker";
-import React, { useCallback, useState } from "react";
+import React, { useCallback, useEffect, useState } from "react";
 import {
   SubmitHandler,
   Controller,
@@ -19,25 +19,17 @@ import ChannelModal from "./ChannelModal";
 import { KeyedMutator } from "swr";
 import ChannelSelect from "./ChannelSelect";
 import VariantSelect from "./VariantSelect";
+import SubmitButton from "@/components/SubmitButton";
+import { mapSaleDetailToForm } from "@/hooks/mapSaleDetailToForm";
 
 type Props = {
   variantsOption: Variants[];
   product: Products;
   salesChannel: SalesChannel[];
   salesOrderMutate: KeyedMutator<any>;
-};
-
-type StockInForm = {
-  created_at: Date;
-  note: string;
-  entries: {
-    variant_id: number;
-    quantity: number;
-  }[];
-  custom_sale_mode?: string;
-  custom_quantity?: number;
-  custom_pack_size?: number;
-  order_image: File | null;
+  editingId: number | null;
+  handleEdit: (id: number | null) => void;
+  editingData: SaleDetail | null;
 };
 
 const Form = ({
@@ -45,6 +37,9 @@ const Form = ({
   product,
   salesChannel,
   salesOrderMutate,
+  editingId,
+  handleEdit,
+  editingData,
 }: Props) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
 
@@ -59,23 +54,92 @@ const Form = ({
     getValues,
     setValue,
     formState: { errors },
+    resetField,
   } = useForm<SalesForm>({
     defaultValues: {},
   });
 
+  useEffect(() => {
+    console.log("editingId", editingId, "editingData", editingData);
+    if (editingId && editingData) {
+      const values = mapSaleDetailToForm(editingData, {
+        fallbackVariantId: variantsOption.find((v) => v.is_active)?.id,
+        fallbackChannelId: salesChannel[0]?.id,
+      });
+      reset(values);
+    }
+  }, [editingId, editingData, reset, variantsOption, salesChannel]);
+
+  function createDefaults(): SalesForm {
+    return {
+      sale_date: null, // default วันนี้
+      customer_name: "", // ค่าว่าง
+      province: "", // ค่าว่าง
+      variant_id: null, // ยังไม่เลือก
+      quantity_pack: null, // ยังไม่กรอก
+      unit_price_at_sale: null,
+      channel_id: null, // ยังไม่เลือก
+      shipping_fee: null,
+      platform_discount: null,
+      shop_discount: null,
+      coin_discount: null,
+      // ถ้ามี note ในฟอร์มก็ใส่ด้วย
+      // note: "",
+    };
+  }
+
+  const handleCancel = () => {
+    // ล้างค่าฟอร์มกลับไปค่าเริ่มต้น
+    reset(createDefaults(), {
+      keepDirty: false,
+      keepErrors: false,
+      keepTouched: false,
+      keepIsSubmitted: false,
+      keepSubmitCount: false,
+    });
+    resetField("shipping_fee");
+  };
+
   const buildFormData = useCallback((data: SalesForm): FormData => {
     const formData = new FormData();
-    formData.append("variant_id", data.variant_id.toString());
-    formData.append("channel_id", data.channel_id.toString());
-    formData.append("sale_date", formatISO(data.sale_date));
+    formData.append(
+      "variant_id",
+      data.variant_id !== null ? data.variant_id.toString() : ""
+    );
+    formData.append(
+      "channel_id",
+      data.channel_id !== null ? data.channel_id.toString() : ""
+    );
+    formData.append(
+      "sale_date",
+      data.sale_date !== null ? formatISO(data.sale_date) : ""
+    );
     formData.append("customer_name", data.customer_name);
     formData.append("province", data.province);
-    formData.append("quantity_pack", data.quantity_pack.toString());
-    formData.append("unit_price_at_sale", data.unit_price_at_sale.toString());
-    formData.append("shipping_fee", data.shipping_fee.toString());
-    formData.append("platform_discount", data.platform_discount.toString());
-    formData.append("shop_discount", data.shop_discount.toString());
-    formData.append("coin_discount", data.coin_discount.toString());
+    formData.append(
+      "quantity_pack",
+      data.quantity_pack !== null ? data.quantity_pack.toString() : ""
+    );
+    formData.append(
+      "unit_price_at_sale",
+      data.unit_price_at_sale !== null ? data.unit_price_at_sale.toString() : ""
+    );
+    formData.append(
+      "shipping_fee",
+      data.shipping_fee !== null ? data.shipping_fee.toString() : ""
+    );
+    formData.append(
+      "platform_discount",
+      data.platform_discount !== null ? data.platform_discount.toString() : ""
+    );
+    formData.append(
+      "shop_discount",
+      data.shop_discount !== null ? data.shop_discount.toString() : ""
+    );
+    formData.append(
+      "coin_discount",
+      data.coin_discount !== null ? data.coin_discount.toString() : ""
+    );
     return formData;
   }, []);
 
@@ -84,10 +148,19 @@ const Form = ({
     const formData = buildFormData(data);
 
     try {
-      await axios.post(
-        `http://localhost:5001/api/sale/${product.id}`,
-        formData
-      );
+      if (editingId) {
+        await axios.patch(
+          `http://localhost:5001/api/sale/${editingId}`,
+          formData
+        );
+        handleCancel();
+        handleEdit(null);
+      } else {
+        await axios.post(
+          `http://localhost:5001/api/sale/${product.id}`,
+          formData
+        );
+      }
       reset();
       salesOrderMutate();
     } catch (error) {
@@ -133,8 +206,9 @@ const Form = ({
                   unit={product.unit}
                   label="ขนาดการขาย"
                   options={activeVariantsOption}
-                  value={field.value}
+                  value={field.value ?? undefined}
                   onChange={field.onChange}
+                  disabled={!!editingId}
                 />
               )}
             />
@@ -144,6 +218,7 @@ const Form = ({
               label="จำนวน"
               register={register}
               type="number"
+              disabled={!!editingId}
             />
             <TextInput
               placeholder="ราคาขายต่อหน่วย"
@@ -161,7 +236,7 @@ const Form = ({
                 <ChannelSelect
                   label="ช่องทางการขาย"
                   options={salesChannel}
-                  value={field.value}
+                  value={field.value ?? undefined}
                   onChange={field.onChange}
                 />
               )}
@@ -205,13 +280,26 @@ const Form = ({
             />
           </div>
         </div>
+        <div className="flex justify-end">
+          {editingId ? (
+            <div className="flex gap-3">
+              <button
+                type="button"
+                className="bg-[#092C4C] p-2 px-3 text-white flex justify-center items-center justify-items-center gap-2 rounded-sm cursor-pointer"
+                onClick={() => {
+                  handleCancel();
+                  handleEdit(null);
+                }}
+              >
+                <span>Cancel</span>
+              </button>
+              <SubmitButton text="Save Change" form="add-sale-order-form" />
+            </div>
+          ) : (
+            <SubmitButton text="Add Sale" form="add-sale-order-form" />
+          )}
+        </div>
       </form>
-      <ChannelModal
-        isOpen={isModalOpen}
-        onClose={handleOpen}
-        title="ตั้งค่าช่องทางการขาย"
-        salesChannel={salesChannel}
-      />
     </>
   );
 };

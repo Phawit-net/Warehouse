@@ -107,7 +107,7 @@ const Table = ({ headerColumns, data, handleDelete }: Props) => {
                             ) : (
                               <div className="relative w-[50px] h-[50px] border border-gray-300 rounded-sm">
                                 <Image
-                                  className="object-contain"
+                                  className="object-contain p-2"
                                   src={imageUrl}
                                   alt="Product"
                                   fill
@@ -134,7 +134,7 @@ const Table = ({ headerColumns, data, handleDelete }: Props) => {
                       {headerColumns.find((col) => col.type === "action") && (
                         <div className="py-2">
                           <div className="flex gap-2">
-                            <IconsButton
+                            {/* <IconsButton
                               type="edit"
                               color="blue"
                               onMouseEnter={() => prefetchProduct(row.id)}
@@ -143,12 +143,12 @@ const Table = ({ headerColumns, data, handleDelete }: Props) => {
                               }) => {
                                 router.push(`${pathname}/edit/${row.id}`);
                               }}
-                            />
-                            <IconsButton
+                            /> */}
+                            {/* <IconsButton
                               type="delete"
                               color="red"
                               handleClick={() => handleDelete(row.id)}
-                            />
+                            /> */}
                             <IconsButton
                               type="import"
                               color="blue"
@@ -224,49 +224,105 @@ const Table = ({ headerColumns, data, handleDelete }: Props) => {
                       }}
                       className={`
                         transition-all duration-500
-                        bg-white px-6 border-gray-200  rounded-b-sm
-                        grid grid-cols-3 shadow-sm
-                        ${
-                          !isDetailExpanded
-                            ? "py-0"
-                            : "py-4  border-l border-r border-b"
-                        }
+                        bg-white border-gray-200 rounded-b-sm
+                     shadow-sm
+                        ${!isDetailExpanded ? "" : "border-l border-r border-b"}
                       `}
                     >
-                      {mainImage && (
-                        <div className="w-[150px] h-[150px] relative border border-gray-200 rounded-sm">
-                          <Image
-                            className="object-contain rounded-sm bg-white p-2"
-                            src={imageUrl}
-                            alt="My Image"
-                            fill
-                            sizes="auto"
-                          />
-                        </div>
-                      )}
-                      <div className="flex flex-col gap-3">
-                        <div className="bg-yellow-200">
-                          <p className="text-xs">Display name</p>
-                          <p className="border-b">{row.name}</p>
-                        </div>
-                        <div className="bg-pink-200 grid grid-cols-[1fr_2fr] gap-3">
-                          <div>
-                            <p className="text-xs">SKU</p>
+                      <div
+                        className={`px-6 grid grid-cols-3 border-b transition duration-200 ${
+                          !isDetailExpanded ? "py-0" : "py-4"
+                        }`}
+                      >
+                        {mainImage && (
+                          <div className="w-[150px] h-[150px] relative border border-gray-200 rounded-sm">
+                            <Image
+                              className="object-contain rounded-sm bg-white p-2"
+                              src={imageUrl}
+                              alt="My Image"
+                              fill
+                              sizes="auto"
+                            />
+                          </div>
+                        )}
+                        <div className="flex flex-col gap-3">
+                          <div className="bg-yellow-200">
+                            <p className="text-xs">Display name</p>
+                            <p className="border-b">{row.name}</p>
+                          </div>
+                          <div className="bg-pink-200 grid grid-cols-[1fr_2fr] gap-3">
+                            <div>
+                              <p className="text-xs">SKU</p>
+                              <p className="border-b">{row.sku}</p>
+                            </div>
+                            <div>
+                              <p className="text-xs">Category</p>
+                              <p className="border-b">{row.category}</p>
+                            </div>
+                          </div>
+                          <div className="bg-blue-200">
+                            <p className="text-xs">Stock</p>
                             <p className="border-b">{row.sku}</p>
                           </div>
-                          <div>
-                            <p className="text-xs">Category</p>
-                            <p className="border-b">{row.category}</p>
-                          </div>
                         </div>
-                        <div className="bg-blue-200">
-                          <p className="text-xs">Stock</p>
-                          <p className="border-b">{row.sku}</p>
-                        </div>
+                        <p className="font-bold">รายละเอียดของ: </p>
+                        <p>SKU: dd</p>
+                        <p>หมวดหมู่: </p>
                       </div>
-                      <p className="font-bold">รายละเอียดของ: </p>
-                      <p>SKU: dd</p>
-                      <p>หมวดหมู่: </p>
+                      <div className="px-6 py-2 flex justify-between">
+                        <button
+                          type="button"
+                          className={`cursor-pointer flex gap-1 items-center hover:text-[#f49b50]`}
+                          onMouseEnter={() => prefetchProduct(row.id)}
+                          onClick={(e: { stopPropagation: () => void }) => {
+                            router.push(`${pathname}/edit/${row.id}`);
+                          }}
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            className={`h-6 w-6`}
+                          >
+                            <path
+                              stroke="currentColor"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="1.5"
+                              d="m14.304 4.844 2.852 2.852M7 7H4a1 1 0 0 0-1 1v10a1 1 0 0 0 1 1h11a1 1 0 0 0 1-1v-4.5m2.409-9.91a2.017 2.017 0 0 1 0 2.853l-6.844 6.844L8 14l.713-3.565 6.844-6.844a2.015 2.015 0 0 1 2.852 0Z"
+                            />
+                          </svg>
+                          <span className="text-sm font-semibold">
+                            Advanced edit
+                          </span>
+                        </button>
+                        <button
+                          type="button"
+                          className={`cursor-pointer flex gap-1 items-center hover:text-[#f49b50]`}
+                          onClick={() => handleDelete(row.id)}
+                        >
+                          <svg
+                            xmlns="http://www.w3.org/2000/svg"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            className={`h-6 w-6`}
+                          >
+                            <path
+                              stroke="currentColor"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                              strokeWidth="1.5"
+                              d="M5 7h14m-9 3v8m4-8v8M10 3h4a1 1 0 0 1 1 1v3H9V4a1 1 0 0 1 1-1ZM6 7h12v13a1 1 0 0 1-1 1H7a1 1 0 0 1-1-1V7Z"
+                            />
+                          </svg>
+
+                          <span className="text-sm font-semibold">
+                            Delete Product
+                          </span>
+                        </button>
+                      </div>
                     </div>
                   </td>
                 </tr>

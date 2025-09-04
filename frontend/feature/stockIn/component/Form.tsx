@@ -20,7 +20,7 @@ import { fmtISODateOrNull, toIntOrNull, toIntOrZero } from "@/lib/format";
 import VariantField from "./VariantField";
 import CustomField from "./CustomField";
 import SubmitButton from "@/components/SubmitButton";
-import { mapDetailToForm } from "@/hooks/mapDetailToForm";
+import { mapStockinDetailToForm } from "@/hooks/mapStockinDetailToForm";
 
 type Props = {
   variantsOption: Variants[];
@@ -84,13 +84,15 @@ const Form = ({
   const orderImageFile = watch("order_image");
 
   useEffect(() => {
+    console.log("editingId", editingId, "editingData", editingData);
+
     if (editingId && editingData) {
       const receiptImage = editingData.image_filename;
       setOrderPreviewUrl(
         `http://127.0.0.1:5001/api/stock-in/uploads/receipts/${receiptImage}`
       );
 
-      const { values, manualSwitch } = mapDetailToForm(editingData, {
+      const { values, manualSwitch } = mapStockinDetailToForm(editingData, {
         fallbackVariantId: fallbackVariantId,
       });
       setManualSwitch(manualSwitch); // เปิดส่วน custom อัตโนมัติถ้ามี

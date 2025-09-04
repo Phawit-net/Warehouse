@@ -8,6 +8,7 @@ type Props = {
   options: { [key: string]: any }[];
   value?: string | number;
   onChange?: (value: string | number) => void;
+  disabled?: boolean;
 };
 
 const VariantSelect = ({
@@ -17,6 +18,7 @@ const VariantSelect = ({
   value,
   margin = 5,
   isLabel = true,
+  disabled = false,
   onChange,
 }: Props) => {
   const [open, setOpen] = useState<boolean>(false);
@@ -51,7 +53,8 @@ const VariantSelect = ({
       <button
         type="button"
         onClick={() => setOpen((prev) => !prev)}
-        className="flex w-full items-center gap-2 justify-between text-left text-gray-500 px-3 py-2 rounded-sm border border-gray-200 focus:border-white focus:ring-2 focus:ring-[#ffc596]"
+        disabled={disabled}
+        className={`flex w-full items-center gap-2 justify-between text-left text-gray-500 px-3 py-2 rounded-sm border border-gray-200 focus:border-white focus:ring-2 focus:ring-[#ffc596] disabled:bg-[#e2e2e2] disabled:cursor-not-allowed transform duration-200`}
       >
         {value
           ? `${options.find((o) => o.id === value)?.sale_mode} (${

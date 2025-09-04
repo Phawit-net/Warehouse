@@ -1,14 +1,23 @@
 import React from "react";
 import Image from "next/image";
 import IconsButton from "@/components/IconsButton";
+import EditGuardButton from "./EditGuardButton";
 
 type Props = {
   headerColumns: HeaderColumn[];
   data: TableData[];
   handleDelete: (id: number) => Promise<void>;
+  handleEdit: (id: number | null) => void;
+  openCollapse: () => void;
 };
 
-const Table = ({ headerColumns, data, handleDelete }: Props) => {
+const Table = ({
+  headerColumns,
+  data,
+  handleDelete,
+  handleEdit,
+  openCollapse,
+}: Props) => {
   const totalVisualColumns = headerColumns.length;
   const getInnerGridColsClasses = () => {
     return `grid-cols-[1fr_1fr_1fr_1fr_1fr_1fr_1fr_1fr_1fr_1fr_1fr_1fr_0.5fr]`;
@@ -111,10 +120,21 @@ const Table = ({ headerColumns, data, handleDelete }: Props) => {
                               className="py-2"
                             >
                               <div className="flex gap-2">
-                                <IconsButton
-                                  type="edit"
-                                  color="blue"
-                                  handleClick={() => console.log("CLICK")}
+                                <EditGuardButton
+                                  isWarning={true}
+                                  header={"แก้ไขรายการขาย"}
+                                  desc={
+                                    "คุณจะไม่สามารถแก้ไข รูปแบบการขาย หรือ จำนวนได้"
+                                  }
+                                  reason={[
+                                    "เอกสารรายการขายนี้ได้ตัดสต๊อกออกจากล็อตสินค้าไปแล้ว",
+                                    "การแก้ไขจะทำให้ข้อมูลสต๊อกและประวัติการขายไม่ถูกต้อง",
+                                    "หากต้องการเปลี่ยนแปลง กรุณาลบรายการขาย และสร้างใบขายใหม่",
+                                  ]}
+                                  onProceed={() => {
+                                    handleEdit(row.sale_id);
+                                    openCollapse();
+                                  }}
                                 />
                                 <IconsButton
                                   type="import"

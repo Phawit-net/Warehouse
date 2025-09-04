@@ -10,11 +10,24 @@ import Form from "@/feature/sale/component/Form";
 import Table from "@/feature/sale/component/Table";
 import { useRef, useState } from "react";
 import BackButton from "@/components/BackButton";
+import { scrollToFormTop } from "@/hooks/scrollToTop";
 
 const StockInPage = () => {
   const params = useParams<{ id: string }>();
   const [formCollapsed, setFormCollapsed] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+
   const formRef = useRef<HTMLDivElement | null>(null);
+
+  const handleEdit = (id: number | null) => {
+    setEditingId(id);
+    console.log(id);
+    scrollToFormTop(formRef);
+  };
+
+  const openCollapse = () => {
+    setFormCollapsed(false);
+  };
 
   const { data: product, error: productError } = useSWR<Products>(
     params?.id ? `http://localhost:5001/api/inventory/${params.id}` : null,
@@ -32,9 +45,16 @@ const StockInPage = () => {
 
   const saleOrder = data?.data ?? [];
 
-  const { data: salesChannel, mutate: salesChannelMutate } = useSWR<
-    SalesChannel[]
-  >(`http://localhost:5001/api/channel`, fetcher);
+  const { data: salesChannel } = useSWR<SalesChannel[]>(
+    `http://localhost:5001/api/channel`,
+    fetcher
+  );
+
+  const { data: saleDetail } = useSWR<SaleDetail>(
+    editingId ? `http://localhost:5001/api/sale/detail/${editingId}` : null,
+    fetcher,
+    { revalidateOnFocus: false, revalidateOnReconnect: false }
+  );
 
   if (productError)
     return (
@@ -64,13 +84,6 @@ const StockInPage = () => {
       <div className="flex justify-between items-center my-3">
         <h2 className="text-3xl font-semibold">ขายสินค้า : {product.name}</h2>
         <BackButton text="Back to Inventory" fallback="/inventory" />
-        {/* <button
-          type="submit"
-          form="add-sale-order-form"
-          className="bg-[#f49b50] text-white p-2 rounded"
-        >
-          Save
-        </button> */}
       </div>
       <section
         className={`transition-[grid-template-rows] duration-300 grid rounded-sm ${
@@ -96,6 +109,9 @@ const StockInPage = () => {
               product={product}
               salesChannel={salesChannel ?? []}
               salesOrderMutate={salesOrderMutate}
+              handleEdit={handleEdit}
+              editingId={editingId}
+              editingData={saleDetail ?? null}
             />
           </div>
         </div>
@@ -140,6 +156,8 @@ const StockInPage = () => {
             headerColumns={salesOrderHeaderColumn}
             data={saleOrder ?? []}
             handleDelete={handleDelete}
+            handleEdit={handleEdit}
+            openCollapse={openCollapse}
           />
         ) : (
           <div className="text-center text-gray-500 py-10">

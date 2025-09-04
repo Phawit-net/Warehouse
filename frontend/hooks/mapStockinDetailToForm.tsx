@@ -1,7 +1,7 @@
 const toDate = (v: Date | string | null | undefined): Date | undefined =>
   !v ? undefined : v instanceof Date ? v : new Date(v);
 
-export function mapDetailToForm(
+export function mapStockinDetailToForm(
   detail: StockInDetail,
   opts?: { fallbackVariantId?: number }
 ): { values: StockInForm; manualSwitch: boolean } {

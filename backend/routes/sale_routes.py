@@ -408,3 +408,166 @@ def delete_sale(sale_id: int):
     except Exception as e:
         db.session.rollback()
         return jsonify({"error": f"❌ Unexpected error: {str(e)}"}), 500
+    
+#4. API GET detail - get sale detail by Id
+@sale_bp.route("/detail/<int:sale_id>", methods=["GET"])
+def get_sale_detail(sale_id: int):
+    try:
+        sale = (
+            db.session.query(Sale)
+            .options(
+                # โหลดรายการในบิล (ปัจจุบันระบบคุณ 1 ใบ = 1 รายการ)
+                joinedload(Sale.items)
+                    .joinedload(SaleItem.variant)
+                    .joinedload(ProductVariant.product),
+                # โหลด allocations ของรายการ และ batch ที่ถูกตัด
+                joinedload(Sale.items)
+                    .joinedload(SaleItem.batches)
+                    .joinedload(SaleItemBatch.batch),
+                # ช่องทางร้าน (เอาชื่อกับ tier %)
+                joinedload(Sale.channel).joinedload(SalesChannel.platform_tier),
+            )
+            .get(sale_id)
+        )
+        if not sale:
+            return jsonify({"error": "❌ Sale not found"}), 404
+
+        # item หลัก (ตามข้อกำหนด: 1 รายการ/บิล)
+        item = sale.items[0] if sale.items else None
+
+        # allocations (ตัดล็อตตาม FEFO ตอนขาย)
+        allocations = []
+        if item:
+            for sib in item.batches:
+                b = sib.batch  # StockBatch
+                allocations.append({
+                    "sale_item_batch_id": sib.id,
+                    "batch_id": b.id if b else None,
+                    "lot_number": b.lot_number if b else None,
+                    "expiry_date": (b.expiry_date.isoformat() if (b and b.expiry_date) else None),
+                    "qty": int(sib.qty or 0),
+                })
+
+        # header response
+        detail = {
+            "id": sale.id,
+            "sale_date": sale.sale_date.isoformat() if sale.sale_date else None,
+            "channel": {
+                "id": sale.channel_id,
+                "name": sale.channel_name_at_sale,
+                "commission_percent": float(sale.commission_percent_at_sale or 0.0),
+                "transaction_percent": float(sale.transaction_percent_at_sale or 0.0),
+            },
+            "customer_name": sale.customer_name,
+            "province": sale.province,
+            "note": getattr(sale, "note", None),
+
+            # totals (คำนวณไว้แล้วตอนสร้าง/อัปเดต)
+            "totals": {
+                "subtotal": float(sale.subtotal or 0.0),
+                "shipping_fee": float(sale.shipping_fee or 0.0),
+                "shop_discount": float(sale.shop_discount or 0.0),
+                "platform_discount": float(sale.platform_discount or 0.0),
+                "coin_discount": float(sale.coin_discount or 0.0),
+                "vat_amount": float(sale.vat_amount or 0.0),
+                "commission_fee": float(sale.commission_fee or 0.0),
+                "transaction_fee": float(sale.transaction_fee or 0.0),
+                "customer_pay": float(sale.customer_pay or 0.0),
+                "seller_receive": float(sale.seller_receive or 0.0),
+            },
+        }
+
+        # item block (สำหรับ prefill form)
+        if item:
+            detail["item"] = {
+                "id": item.id,
+                "product_id": item.product_id,
+                "variant_id": item.variant_id,
+                "sale_mode_at_sale": item.sale_mode_at_sale,
+                "pack_size_at_sale": int(item.pack_size_at_sale or 0),
+                "quantity_pack": int(item.quantity_pack or 0),
+                "unit_price_at_sale": float(item.unit_price_at_sale or 0.0),
+                "base_units": int(item.base_units or 0),
+                "line_total": float(item.line_total or 0.0),
+            }
+        else:
+            detail["item"] = None
+
+        detail["allocations"] = allocations
+
+        return jsonify(detail), 200
+
+    except Exception as e:
+        return jsonify({"error": f"❌ Failed to fetch sale detail: {str(e)}"}), 500
+
+#5. API PATCH - แก้ไข sale แค่ Header ห้ามแก้จำนวน quantity
+@sale_bp.route("/<int:sale_id>", methods=["PATCH"])
+def patch_sale_header(sale_id: int):
+    try:
+        p = request.form
+
+        sale = (
+            db.session.query(Sale)
+            .options(joinedload(Sale.items))
+            .get(sale_id)
+        )
+        if not sale:
+            return jsonify({"error": "❌ Sale not found"}), 404
+
+        # header updates
+        if "sale_date" in p:
+            sale.sale_date = datetime.fromisoformat(p.get("sale_date"))
+
+        for f in ("customer_name","province","note"):
+            if f in p:
+                setattr(sale, f, p.get(f) or None)
+
+        # discounts / fees / unit price (ถ้าต้องการแก้)
+        def fnum(k): 
+            v = p.get(k); 
+            return float(v) if v not in (None,"") else None
+
+        # อนุญาตแก้ราคาต่อแพ็ค? (แล้วแต่ policy)
+        # สมมติเก็บไว้ที่ item แถวเดียวของใบนี้
+        item = sale.items[0] if sale.items else None
+        if item and "unit_price_at_sale" in p:
+            item.unit_price_at_sale = float(p.get("unit_price_at_sale"))
+            item.line_total = item.unit_price_at_sale * item.quantity_pack
+
+        for k in ("shipping_fee","shop_discount","platform_discount","coin_discount","vat_amount"):
+            val = fnum(k)
+            if val is not None:
+                setattr(sale, k, val)
+
+        # เปลี่ยนช่องทางร้าน → re-snapshot %
+        if "channel_id" in p:
+            channel = db.session.get(SalesChannel, int(p.get("channel_id")))
+            if not channel:
+                return jsonify({"error": "❌ SalesChannel not found"}), 404
+            tier = channel.platform_tier
+            sale.channel_id = channel.id
+            sale.channel_name_at_sale = channel.channel_name
+            sale.commission_percent_at_sale  = float(getattr(tier, "commission_percent", 0.0) or 0.0)
+            sale.transaction_percent_at_sale = float(getattr(tier, "transaction_percent", 0.0) or 0.0)
+
+        # recalc totals
+        subtotal = 0.0
+        for it in sale.items:
+            subtotal += float(it.line_total or 0.0)
+        sale.subtotal = round(subtotal, 2)
+
+        disc = float(sale.shop_discount or 0) + float(sale.platform_discount or 0) + float(sale.coin_discount or 0)
+        pre_vat = sale.subtotal - disc + float(sale.shipping_fee or 0)
+        vat = float(sale.vat_amount or 0)
+
+        sale.commission_fee  = round(sale.subtotal * (float(sale.commission_percent_at_sale or 0) / 100.0), 2)
+        sale.transaction_fee = round(sale.subtotal * (float(sale.transaction_percent_at_sale or 0) / 100.0), 2)
+        sale.customer_pay    = round(pre_vat + vat, 2)
+        sale.seller_receive  = round(sale.customer_pay - sale.commission_fee - sale.transaction_fee, 2)
+
+        db.session.commit()
+        return jsonify({"message": "✅ Sale updated (header)"}), 200
+
+    except Exception as e:
+        db.session.rollback()
+        return jsonify({"error": f"❌ Failed to patch sale: {str(e)}"}), 500
