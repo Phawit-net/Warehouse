@@ -1,5 +1,5 @@
 from flask import abort, Blueprint, current_app, jsonify, request, send_from_directory
-from model import Sale, SaleItem, StockBatch, StockIn, StockInEntry, StockMovement, db, Product, ProductVariant, ProductImage
+from models import Sale, SaleItem, StockBatch, StockIn, StockInEntry, StockMovement, db, Product, ProductVariant, ProductImage
 from werkzeug.utils import secure_filename
 from sqlalchemy.orm import selectinload, joinedload
 from sqlalchemy.exc import SQLAlchemyError

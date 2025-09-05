@@ -1,13 +1,6 @@
-import math
-from flask import abort, Blueprint, jsonify, request, send_from_directory
-from model import Platform, PlatformTier, ProductVariant, db,Product, StockIn, StockInEntry, SalesChannel, Sale
+from flask import  Blueprint, jsonify, request
+from models import Platform, PlatformTier, db,  SalesChannel
 from sqlalchemy.exc import SQLAlchemyError
-from werkzeug.utils import secure_filename
-import os
-import json
-from datetime import datetime
-from sqlalchemy.orm import selectinload
-import traceback
 
 channel_bp = Blueprint('channel_bp', __name__, url_prefix='/api/channel')
 

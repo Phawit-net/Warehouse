@@ -1,5 +1,5 @@
 # seed_data.py
-from model import db, Platform, PlatformTier
+from models import db, Platform, PlatformTier
 
 def seed_platforms():
     platforms_data = [

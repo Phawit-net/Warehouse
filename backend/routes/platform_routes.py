@@ -1,5 +1,5 @@
 from flask import Blueprint, jsonify
-from model import db, Platform
+from models import Platform
 
 platform_bp = Blueprint("platform_bp", __name__, url_prefix="/api/platforms")
 

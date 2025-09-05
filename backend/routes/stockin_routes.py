@@ -1,12 +1,11 @@
 from flask import abort, Blueprint, current_app, jsonify, request, send_from_directory
-from model import ProductVariant, db,Product, StockIn, StockInEntry, StockBatch, StockMovement
+from models import ProductVariant, db,Product, StockIn, StockInEntry, StockBatch, StockMovement
 from sqlalchemy.exc import SQLAlchemyError, IntegrityError
 from werkzeug.utils import secure_filename
 import os
 import json
 from datetime import date, datetime, timezone
 from sqlalchemy.orm import joinedload
-import traceback
 from sqlalchemy import func
 
 stockin_bp = Blueprint('stockin_bp', __name__, url_prefix='/api/stock-in')

@@ -1,39 +1,21 @@
-import click
-from flask import Flask, jsonify, request
-from flask.cli import with_appcontext
-from flask_cors import CORS
-from flask_sqlalchemy import SQLAlchemy
 import os
-from seed_data import seed_platforms
-from model import Platform, PlatformTier, db
-from routes.product_routes import product_bp
-from routes.stockin_routes import stockin_bp
-from routes.sale_routes import sale_bp
-from routes.channel_routes import channel_bp
-from routes.platform_routes import platform_bp
+import sqlite3
+import click
+
+from flask import Flask, jsonify
+from flask.cli import with_appcontext
+from flask_sqlalchemy import SQLAlchemy
+from flask_cors import CORS  # ใช้ผ่าน extensions.cors อยู่แล้ว แต่ import ไว้ไม่เสียหาย
+
 from sqlalchemy import event
 from sqlalchemy.engine import Engine
-import sqlite3
 
-app = Flask(__name__)
-app.config["DEBUG"] = True
-CORS(app, resources={r"/api/*": {"origins": "http://localhost:3000"}}, supports_credentials=True)  # ให้ frontend (ต่าง origin) เรียกได้
+from config import Config
+from extensions import cors, jwt, limiter, ph  # มาจาก Step 1 ที่เราวางไว้
+from models import db, Platform, PlatformTier, Membership, User, Workspace  # db = SQLAlchemy() อยู่ใน model ของเน็ท
+from seed_data import seed_platforms
 
-# สร้าง path สำหรับไฟล์ .db เก็บในโปรเจกต์
-basedir = os.path.abspath(os.path.dirname(__file__))
-app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///' + os.path.join(basedir, 'warehouse.db')
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-
-# init db
-db.init_app(app)
-
-# register routes
-app.register_blueprint(product_bp)
-app.register_blueprint(stockin_bp)
-app.register_blueprint(sale_bp)
-app.register_blueprint(channel_bp)
-app.register_blueprint(platform_bp)
-
+# ----- เปิด Foreign Keys บน SQLite -----
 @event.listens_for(Engine, "connect")
 def set_sqlite_pragma(dbapi_connection, connection_record):
     if isinstance(dbapi_connection, sqlite3.Connection):
@@ -41,22 +23,95 @@ def set_sqlite_pragma(dbapi_connection, connection_record):
         cursor.execute("PRAGMA foreign_keys=ON;")
         cursor.close()
 
-with app.app_context():
-    db.create_all()
 
-@app.cli.command("seed_platforms")
-@with_appcontext
-def seed_platforms_command():
-    seed_platforms()
-    click.echo("✅ Seeded Platforms & Tiers")
+def create_app():
+    app = Flask(__name__)
 
-@app.cli.command("clear_platforms")
-@with_appcontext
-def clear_platforms_command():
-    PlatformTier.query.delete()
-    Platform.query.delete()
-    db.session.commit()
-    print("✅ Cleared all platforms and tiers")
+    # โหลดค่าคอนฟิกหลัก (JWT, CORS, etc.)
+    app.config.from_object(Config)
 
-if __name__ == '__main__':
+    # ตั้งค่า DB ถ้ายังไม่ได้ตั้งจาก ENV/Config
+    basedir = os.path.abspath(os.path.dirname(__file__))
+    app.config.setdefault(
+        "SQLALCHEMY_DATABASE_URI",
+        "sqlite:///" + os.path.join(basedir, "warehouse.db"),
+    )
+    app.config.setdefault("SQLALCHEMY_TRACK_MODIFICATIONS", False)
+
+    # ----- init extensions -----
+    cors.init_app(
+        app,
+        resources={r"/api/*": {"origins": app.config.get("FRONTEND_ORIGIN", "http://localhost:3000")}},
+        supports_credentials=True,  # ต้องมีเพื่อส่ง cookie refresh ในอนาคต
+    )
+    jwt.init_app(app)
+    limiter.init_app(app)
+    db.init_app(app)
+
+    # ----- health check -----
+    @app.get("/api/healthz")
+    def healthz():
+        return jsonify(ok=True)
+
+    # ----- register blueprints (อย่าใส่ url_prefix ถ้า endpoint ภายในขึ้นต้น /api/ อยู่แล้ว) -----
+    from routes.product_routes import product_bp
+    from routes.stockin_routes import stockin_bp
+    from routes.sale_routes import sale_bp
+    from routes.channel_routes import channel_bp
+    from routes.platform_routes import platform_bp
+    # (ภายหลังจะเพิ่ม auth_bp ตรงนี้)
+    app.register_blueprint(product_bp)
+    app.register_blueprint(stockin_bp)
+    app.register_blueprint(sale_bp)
+    app.register_blueprint(channel_bp)
+    app.register_blueprint(platform_bp)
+
+    # ----- CLI: init-db / seed / clear -----
+    @app.cli.command("init-db")
+    @with_appcontext
+    def init_db_cmd():
+        db.create_all()
+        click.echo("✅ Initialized DB")
+
+    @app.cli.command("seed-platforms")
+    @with_appcontext
+    def seed_platforms_cmd():
+        seed_platforms()
+        click.echo("✅ Seeded Platforms & Tiers")
+
+    @app.cli.command("clear-platforms")
+    @with_appcontext
+    def clear_platforms_cmd():
+        PlatformTier.query.delete()
+        Platform.query.delete()
+        db.session.commit()
+        click.echo("✅ Cleared Platforms & Tiers")
+
+    @app.cli.command("create-owner")
+    @click.option("--email", required=True)
+    @click.option("--password", prompt=True, hide_input=True, confirmation_prompt=True)
+    @click.option("--workspace", "workspace_name", required=True)
+    @with_appcontext
+    def create_owner_cmd(email, password, workspace_name):
+        try:
+            user = User(email=email.strip().lower(), password_hash=ph.hash(password))
+            ws = Workspace(name=workspace_name.strip(), plan="FREE")
+            db.session.add_all([user, ws])
+            db.session.flush()
+            mem = Membership(user_id=user.id, workspace_id=ws.id, role="OWNER", is_primary=True)
+            db.session.add(mem)
+            db.session.commit()
+            click.echo(f"✅ Created owner {email} for workspace '{workspace_name}' (id={ws.id})")
+        except Exception as e:
+            db.session.rollback()
+            click.echo(f"❌ Failed: {e}", err=True)
+
+    return app
+
+
+# WSGI/Dev entrypoint
+app = create_app()
+
+if __name__ == "__main__":
+    # ปรับพอร์ตตามที่เน็ทใช้ก่อนหน้า (5001) หรือจะ default 5000 ก็ได้
     app.run(port=5001, debug=True)

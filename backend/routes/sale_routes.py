@@ -1,9 +1,8 @@
 import math
 import traceback
-from flask import abort, Blueprint, jsonify, request, send_from_directory
-from model import ProductVariant, SaleItem, SaleItemBatch, StockBatch, StockMovement, db,Product, SalesChannel, Sale
+from flask import  Blueprint, jsonify, request
+from models import ProductVariant, SaleItem, SaleItemBatch, StockBatch, StockMovement, db,Product, SalesChannel, Sale
 from sqlalchemy.exc import SQLAlchemyError
-from werkzeug.utils import secure_filename
 from datetime import datetime, date
 from sqlalchemy.orm import selectinload, joinedload
 from sqlalchemy import func, distinct
