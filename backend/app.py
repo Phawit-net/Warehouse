@@ -42,16 +42,12 @@ def create_app():
     cors.init_app(
         app,
         resources={r"/api/*": {"origins": app.config.get("FRONTEND_ORIGIN", "http://localhost:3000")}},
-        supports_credentials=True,  # ต้องมีเพื่อส่ง cookie refresh ในอนาคต
+        supports_credentials=True,
+        allow_headers=["Content-Type", "Authorization", "X-CSRF-TOKEN"],  # ⬅️ สำคัญ
     )
     jwt.init_app(app)
     limiter.init_app(app)
     db.init_app(app)
-
-    # ----- health check -----
-    @app.get("/api/healthz")
-    def healthz():
-        return jsonify(ok=True)
 
     # ----- register blueprints (อย่าใส่ url_prefix ถ้า endpoint ภายในขึ้นต้น /api/ อยู่แล้ว) -----
     from routes.product_routes import product_bp
@@ -59,12 +55,14 @@ def create_app():
     from routes.sale_routes import sale_bp
     from routes.channel_routes import channel_bp
     from routes.platform_routes import platform_bp
+    from routes.auth_routes import auth_bp
     # (ภายหลังจะเพิ่ม auth_bp ตรงนี้)
     app.register_blueprint(product_bp)
     app.register_blueprint(stockin_bp)
     app.register_blueprint(sale_bp)
     app.register_blueprint(channel_bp)
     app.register_blueprint(platform_bp)
+    app.register_blueprint(auth_bp)
 
     # ----- CLI: init-db / seed / clear -----
     @app.cli.command("init-db")
@@ -89,12 +87,13 @@ def create_app():
 
     @app.cli.command("create-owner")
     @click.option("--email", required=True)
+    @click.option("--username", required=True)
     @click.option("--password", prompt=True, hide_input=True, confirmation_prompt=True)
     @click.option("--workspace", "workspace_name", required=True)
     @with_appcontext
-    def create_owner_cmd(email, password, workspace_name):
+    def create_owner_cmd(email, username, password, workspace_name):
         try:
-            user = User(email=email.strip().lower(), password_hash=ph.hash(password))
+            user = User(email=email.strip().lower(), username=username.strip(), password_hash=ph.hash(password))
             ws = Workspace(name=workspace_name.strip(), plan="FREE")
             db.session.add_all([user, ws])
             db.session.flush()

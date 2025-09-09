@@ -11,7 +11,7 @@ const MenuSideBar = () => {
   const basePath = `/` + segments[0];
 
   return (
-    <aside className=" h-full w-1/8 min-w-[100px] border-r-1 border-gray-200">
+    <aside className=" h-full w-1/7 min-w-[100px] border-r-1 border-gray-200">
       <div className="mx-4 mt-4 flex justify-between">
         <span>ICON</span>
         <button className="cursor-pointer hover:text-[#f49b50]">
