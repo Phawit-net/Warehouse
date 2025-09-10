@@ -4,7 +4,7 @@ from ._base import db, IDMixin, TimestampMixin, StrEnum
 
 class Workspace(TimestampMixin, IDMixin, db.Model):
     __tablename__ = "workspace"
-    name = db.Column(db.String(120), nullable=False)
+    name = db.Column(db.String(120), nullable=True)
 
     # แผนราคา + บิลลิ่ง
     plan = db.Column(db.String(20), nullable=False, default="FREE")

@@ -1,16 +1,17 @@
 from flask import Blueprint, request, jsonify, current_app
 from sqlalchemy.exc import IntegrityError
 from extensions import ph, limiter  # PasswordHasher จาก extensions.py
-from models import db, User, Workspace, Membership, RefreshToken
+from models import db, User, Workspace, Membership, RefreshToken, Warehouse
 from datetime import datetime, timedelta, timezone
+from sqlalchemy import func
 
 from flask_jwt_extended import (
     create_access_token, create_refresh_token,
     set_refresh_cookies, unset_jwt_cookies,
-    jwt_required, get_jwt, decode_token
+    jwt_required, get_jwt, decode_token,
 )
 
-auth_bp = Blueprint("auth",  __name__, url_prefix='/api/auth')
+auth_bp = Blueprint("auth_bp",  __name__, url_prefix='/api/auth')
 
 # ====== Helper ======
 def _now_utc():
@@ -61,11 +62,21 @@ def _revoke_refresh(jti: str):
 def _validate_email(email: str) -> bool:
     return isinstance(email, str) and "@" in email and "." in email
 
+def _get_onboarding_status(wsid: int):
+    ws = Workspace.query.get(wsid)
+    name_set = bool(ws and ws.name and ws.name.strip())
+    have_wh = db.session.query(func.count(Warehouse.id)).filter_by(workspace_id=wsid).scalar() > 0
+    return {
+        "workspace_name_set": name_set,
+        "has_default_warehouse": have_wh,
+        "done": name_set and have_wh
+    }
 
 @auth_bp.post("/register-owner")
 def register_owner():
     data = request.get_json(silent=True) or {}
     email = (data.get("email") or "").strip().lower()
+    username = data.get("username") or ""
     password = data.get("password") or ""
     workspace_name = (data.get("workspace_name") or "").strip()
 
@@ -74,15 +85,14 @@ def register_owner():
         return jsonify({"error": "อีเมลไม่ถูกต้อง"}), 400
     if len(password) < 8:
         return jsonify({"error": "รหัสผ่านต้องอย่างน้อย 8 ตัว"}), 400
-    if not workspace_name:
-        return jsonify({"error": "กรุณาใส่ชื่อร้าน/เวิร์กสเปซ"}), 400
 
     # 2) สร้าง user + workspace + membership(OWNER) ในทรานแซคชันเดียว
     try:
         pwd_hash = ph.hash(password)
 
-        user = User(email=email, password_hash=pwd_hash)
-        ws = Workspace(name=workspace_name, plan="FREE")
+        user = User(email=email, password_hash=pwd_hash, username= username)
+        # ชื่อร้านจะว่างได้ใน onboarding
+        ws = Workspace(name=workspace_name or None, plan="FREE")
         db.session.add_all([user, ws])
         db.session.flush()  # ได้ id
 
@@ -101,7 +111,7 @@ def register_owner():
     # 3) ตอบกลับข้อมูล minimal (ยังไม่ออก token ใน step นี้)
     return jsonify({
         "message": "สมัครสำเร็จ",
-        "user": {"id": user.id, "email": user.email},
+        "user": {"id": user.id, "email": user.email,"username":user.username},
         "workspace": {"id": ws.id, "name": ws.name, "plan": ws.plan},
         "membership": {"role": mem.role, "is_primary": mem.is_primary}
     }), 201
@@ -213,11 +223,14 @@ def me():
     mems = Membership.query.filter_by(user_id=user_id).all()
     memberships = [{"workspace_id": x.workspace_id, "role": x.role, "is_primary": x.is_primary} for x in mems]
 
+    onboarding = _get_onboarding_status(wsid)
+
     return jsonify({
         "user": {"id": user.id, "email": user.email, "username": user.username},
         "current_workspace": {"id": wsid},
         "role": role,
-        "memberships": memberships
+        "memberships": memberships,
+        "onboarding": onboarding
     })
 
 

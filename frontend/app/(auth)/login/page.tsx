@@ -1,11 +1,12 @@
 "use client";
 import { useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import { useAuth } from "@/app/providers/AuthProvider";
 
 export default function LoginPage() {
   const { login, loading } = useAuth();
   const router = useRouter();
+  const next = useSearchParams().get("next") || "/dashboard";
   const [email, setEmail] = useState("");
   const [password, setPass] = useState("");
   const [err, setErr] = useState<string | null>(null);
@@ -15,8 +16,6 @@ export default function LoginPage() {
     setErr(null);
     try {
       await login(email, password);
-      const params = new URLSearchParams(window.location.search);
-      const next = params.get("next") || "/dashboard";
       router.replace(next);
     } catch (e: any) {
       setErr("อีเมลหรือรหัสผ่านไม่ถูกต้อง");
@@ -51,6 +50,13 @@ export default function LoginPage() {
             required
           />
         </div>
+        <button
+          type="button"
+          onClick={() => window.location.assign("/register")}
+          className="hover:text-[#f49b50] cursor-pointer"
+        >
+          สมัครสมาชิก
+        </button>
         <button
           className="w-full rounded-lg py-2 border bg-black text-white disabled:opacity-50"
           disabled={loading}

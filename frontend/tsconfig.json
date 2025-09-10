@@ -28,7 +28,8 @@
     "**/*.tsx",
     ".next/types/**/*.ts",
     "vitest.config.mts",
-    "vitest.setup.ts"
+    "vitest.setup.ts",
+    "app/(auth)/register"
   ],
   "exclude": ["node_modules"]
 }

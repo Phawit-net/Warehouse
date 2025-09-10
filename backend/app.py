@@ -56,6 +56,7 @@ def create_app():
     from routes.channel_routes import channel_bp
     from routes.platform_routes import platform_bp
     from routes.auth_routes import auth_bp
+    from routes.workspace_routes import workspace_bp
     # (ภายหลังจะเพิ่ม auth_bp ตรงนี้)
     app.register_blueprint(product_bp)
     app.register_blueprint(stockin_bp)
@@ -63,6 +64,7 @@ def create_app():
     app.register_blueprint(channel_bp)
     app.register_blueprint(platform_bp)
     app.register_blueprint(auth_bp)
+    app.register_blueprint(workspace_bp)
 
     # ----- CLI: init-db / seed / clear -----
     @app.cli.command("init-db")
@@ -89,18 +91,28 @@ def create_app():
     @click.option("--email", required=True)
     @click.option("--username", required=True)
     @click.option("--password", prompt=True, hide_input=True, confirmation_prompt=True)
-    @click.option("--workspace", "workspace_name", required=True)
+    @click.option("--workspace", "workspace_name", required=False, help="ชื่อร้าน (optional)")
     @with_appcontext
     def create_owner_cmd(email, username, password, workspace_name):
         try:
-            user = User(email=email.strip().lower(), username=username.strip(), password_hash=ph.hash(password))
-            ws = Workspace(name=workspace_name.strip(), plan="FREE")
+            user = User(
+                email=email.strip().lower(),
+                username=username.strip(),
+                password_hash=ph.hash(password),
+            )
+            # ✅ ถ้าไม่ได้ส่ง workspace name → ให้ None เพื่อไปตั้งชื่อใน onboarding
+            ws = Workspace(name=workspace_name.strip() if workspace_name else None, plan="FREE")
+
             db.session.add_all([user, ws])
             db.session.flush()
+
             mem = Membership(user_id=user.id, workspace_id=ws.id, role="OWNER", is_primary=True)
             db.session.add(mem)
+
             db.session.commit()
-            click.echo(f"✅ Created owner {email} for workspace '{workspace_name}' (id={ws.id})")
+
+            shown_name = workspace_name if workspace_name else "(ยังไม่ได้ตั้งชื่อ)"
+            click.echo(f"✅ Created owner {email} for workspace '{shown_name}' (id={ws.id})")
         except Exception as e:
             db.session.rollback()
             click.echo(f"❌ Failed: {e}", err=True)

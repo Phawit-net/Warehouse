@@ -12,6 +12,7 @@ import { usePathname } from "next/navigation";
 import { axiosInst, bindAuth } from "@/lib/api";
 import { getCookie } from "@/lib/cookie";
 import { mutate } from "swr";
+import Cookies from "js-cookie";
 
 const setHasSession = () => {
   if (typeof document === "undefined") return;
@@ -147,6 +148,15 @@ export default function AuthProvider({
       const meRes = await axiosInst.get("/api/auth/me");
       setMe(meRes.data as MeType);
       mutate("/api/auth/me", meRes.data, false);
+
+      const done = !!meRes.data?.onboarding?.done;
+      if (done) {
+        Cookies.set("ob", "1", { sameSite: "lax", path: "/" }); // ✅ บอก middleware ว่า onboarded แล้ว
+        window.location.assign("/dashboard"); // ไป dashboard ตรง ๆ ไม่แวะ /onboarding
+      } else {
+        Cookies.remove("ob", { path: "/" }); // ยังไม่จบ onboarding
+        window.location.assign("/onboarding");
+      }
     } finally {
       setLoading(false);
     }
@@ -165,8 +175,10 @@ export default function AuthProvider({
       );
     } finally {
       clearHasSession();
+      Cookies.remove("ob", { path: "/" });
       setAccess(null);
       setMe(null);
+      window.location.assign("/login");
     }
   }, []);
 
