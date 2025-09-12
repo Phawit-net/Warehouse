@@ -51,8 +51,7 @@ export default function InventoryPage() {
   };
 
   return (
-    <main className="min-h-screen">
-      <div className="flex">
+      <div className="flex min-h-full ">
         <div className="flex-grow p-10 w-6/7">
           <div className="flex items-end justify-between mb-4">
             <h1 className="text-2xl font-bold">คลังสินค้า</h1>
@@ -82,8 +81,7 @@ export default function InventoryPage() {
             onLimitChange={handleLimitChange}
           />
         </div>
-        <div className="w-1/7 min-w-[100px] bg-gray-50  h-screen "></div>
+        <div className="w-1/7 min-w-[100px] bg-gray-50"></div>
       </div>
-    </main>
   );
 }

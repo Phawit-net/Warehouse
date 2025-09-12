@@ -1,6 +1,8 @@
 from flask import Blueprint, request, jsonify
 from models import db, Workspace, Warehouse
 from sqlalchemy import func
+from services.plan import get_limits, count_members_non_owner, count_warehouses
+from decorators.guard import require_perm
 
 from flask_jwt_extended import (
     jwt_required, get_jwt,
@@ -88,3 +90,38 @@ def ensure_default_warehouse():
         "warehouse": {"id": wh.id, "code": wh.code, "name": wh.name, "is_default": True},
         "onboarding": _get_onboarding_status(wsid)
     }), 201
+
+#API GET PLAN ของเราว่าเป็นอะไร ส่งข้อมูล plan + usage
+@workspace_bp.get("/plan")
+@jwt_required()
+def get_plan_info():
+    wsid = get_jwt()["wsid"]
+    ws = Workspace.query.get(wsid)
+
+    limits = get_limits(ws.plan)
+    usage = {
+        "warehouses": count_warehouses(wsid),
+        "members_non_owner": count_members_non_owner(wsid),
+    }
+    return jsonify({
+        "plan": ws.plan,
+        "limits": limits,
+        "usage": usage,
+    })
+
+#API UPGRADE PLAN ของเรา mock อัปเกรด plan
+@workspace_bp.post("/upgrade")
+@jwt_required()
+@require_perm("workspace.manage")
+def upgrade_plan():
+    wsid = get_jwt()["wsid"]
+    ws = Workspace.query.get(wsid)
+    data = request.get_json() or {}
+    to = (data.get("to") or "").upper()  # "PRO" | "ENTERPRISE"
+
+    if to not in ("PRO", "ENTERPRISE"):
+        return jsonify({"error": "BAD_REQUEST"}), 400
+
+    ws.plan = to
+    db.session.commit()
+    return jsonify({"ok": True, "plan": ws.plan})

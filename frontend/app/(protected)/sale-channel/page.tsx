@@ -27,7 +27,7 @@ const SaleChannelPage = () => {
     <main className="min-h-screen">
       <div className="flex">
         <div className="flex-grow p-10 w-6/7">
-          <div className="flex items-center justify-between mb-4">
+          <div className="flex items-end justify-between mb-4">
             <h1 className="text-2xl font-bold">ช่องทางการขาย (ร้านค้า)</h1>
             <AddButton text={"เพิ่มร้านค้า"} handleClick={handleClick} />
           </div>

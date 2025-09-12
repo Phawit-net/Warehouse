@@ -14,5 +14,6 @@ class Config:
     JWT_COOKIE_SAMESITE = os.getenv("COOKIE_SAMESITE", "Lax")
     JWT_COOKIE_CSRF_PROTECT = True  # จะให้ FE ส่ง X-CSRF-TOKEN มาเวลาเรียก refresh/logout
 
+
     # CORS
     FRONTEND_ORIGIN = os.getenv("FRONTEND_ORIGIN", "http://localhost:3000")

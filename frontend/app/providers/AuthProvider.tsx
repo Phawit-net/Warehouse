@@ -13,6 +13,7 @@ import { axiosInst, bindAuth } from "@/lib/api";
 import { getCookie } from "@/lib/cookie";
 import { mutate } from "swr";
 import Cookies from "js-cookie";
+import { prefetchPlan } from "@/lib/plan";
 
 const setHasSession = () => {
   if (typeof document === "undefined") return;
@@ -44,6 +45,7 @@ type AuthContextType = {
     init?: RequestInit
   ): Promise<Response>;
   ready: boolean;
+  authReady: boolean;
 };
 
 const AuthContext = createContext<AuthContextType>(null as any);
@@ -68,7 +70,7 @@ export default function AuthProvider({
   const [accessToken, setAccessToken] = useState<string | null>(null);
   const [me, setMe] = useState<MeType | null>(null);
   const [ready, setReady] = useState(false);
-
+  const [authReady, setAuthReady] = useState(false);
   const [loading, setLoading] = useState(false);
   const accessRef = useRef<string | null>(null);
   const refreshingRef = useRef<Promise<string | null> | null>(null);
@@ -76,6 +78,33 @@ export default function AuthProvider({
   useEffect(() => {
     accessRef.current = accessToken;
   }, [accessToken]);
+
+  useEffect(() => {
+    const csrf = getCookie("csrf_refresh_token");
+  
+    // ถ้าไม่มี CSRF cookie แปลว่าไม่มี refresh เลย
+    if (!csrf) {
+      setAuthReady(true);          // เราพร้อมบอกว่า "ยังไม่ล็อกอิน"
+      setAccessToken(null);
+      setMe(null);
+      return;
+    }
+  
+    // มี CSRF → ลอง refresh หนึ่งที
+    (async () => {
+      try {
+        const newToken = await refresh(); // ฟังก์ชันเดิมของคุณ
+        setAccessToken(newToken);
+      } catch {
+        // refresh ล้มเหลว → ถือว่า logout
+        setAccessToken(null);
+        setMe(null);
+        Cookies.remove("csrf_refresh_token");
+      } finally {
+        setAuthReady(true);
+      }
+    })();
+  }, []);
 
   // setter เดียว ใช้ทั้ง state & ref
   const setAccess = (t: string | null) => {
@@ -147,6 +176,8 @@ export default function AuthProvider({
       // โหลด me (interceptor จะติด Authorization ให้เอง)
       const meRes = await axiosInst.get("/api/auth/me");
       setMe(meRes.data as MeType);
+      await prefetchPlan();
+
       mutate("/api/auth/me", meRes.data, false);
 
       const done = !!meRes.data?.onboarding?.done;
@@ -171,13 +202,16 @@ export default function AuthProvider({
         {
           _skipAuth: true,
           headers: csrf ? { "X-CSRF-TOKEN": csrf } : {},
+          withCredentials: true,
         }
       );
     } finally {
       clearHasSession();
+      Cookies.remove("csrf_refresh_token");
       Cookies.remove("ob", { path: "/" });
       setAccess(null);
       setMe(null);
+      mutate(() => true, undefined, { revalidate: false });
       window.location.assign("/login");
     }
   }, []);
@@ -230,6 +264,7 @@ export default function AuthProvider({
         refresh,
         fetchWithAuth, // แนะนำค่อย ๆ ย้ายไปใช้ axiosInst/swrFetcher
         ready,
+        authReady,
       }}
     >
       {children}

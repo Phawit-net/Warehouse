@@ -4,6 +4,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useAuth } from "@/app/providers/AuthProvider";
 import MenuSideBar from "@/components/MenuSideBar";
 import Navbar from "@/components/Navbar";
+import { getCookie } from "@/lib/cookie";
 
 function hasCookie(name: string) {
   if (typeof document === "undefined") return false;
@@ -15,7 +16,7 @@ export default function ProtectedLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { accessToken, refresh } = useAuth();
+  const { accessToken, refresh, authReady } = useAuth();
   const router = useRouter();
   const pathname = usePathname();
 
@@ -46,14 +47,26 @@ export default function ProtectedLayout({
     }
   }, [accessToken, pathname, router]);
 
+  useEffect(() => {
+    if (!authReady) return;
+  
+    const hasRefreshCSRF = !!getCookie("csrf_refresh_token");
+    const isPublic = pathname?.startsWith("/login") || pathname?.startsWith("/register");
+  
+    if (!accessToken && !hasRefreshCSRF && !isPublic) {
+      router.replace("/login");
+    }
+  }, [authReady, accessToken, pathname]);
+
   // เรนเดอร์ shell ไปเลย (ลดอาการแฟลช) — ฟอร์ม/เพจย่อยให้ใช้ axiosInst (interceptor) จัดการ 401 เอง
   return (
-    <div className="min-h-screen flex">
-      <MenuSideBar />
-      <div className="flex-1">
-        <Navbar />
-        <main className="flex-1 overflow-y-auto h-full">{children}</main>
-      </div>
-    </div>
+<div className="min-h-screen flex">
+  <MenuSideBar />
+  <div className="flex-1 flex flex-col">
+    <Navbar />
+    {/* ลบ h-full และเพิ่ม min-h-0 */}
+    <main className="flex-1 overflow-y-auto min-h-0">{children}</main>
+  </div>
+</div>
   );
 }
