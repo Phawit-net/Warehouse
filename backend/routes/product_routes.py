@@ -7,6 +7,7 @@ import os
 import json
 import uuid
 from sqlalchemy import func
+from flask_jwt_extended import jwt_required, get_jwt
 
 product_bp = Blueprint('product_bp', __name__, url_prefix='/api/inventory')
 
@@ -133,11 +134,16 @@ def get_all_products():
 
 
 # 2. API POST - add new product
-@product_bp.route('/', methods=['POST'])
+@product_bp.route('', methods=['POST'])
+@jwt_required()
 def create_product():
     data = request.form
     main_image = request.files.get("main_image")
     other_images = request.files.getlist("other_images")
+
+    # ดึง workspace จาก access token claim
+    jwt_data = get_jwt()
+    wsid = int(jwt_data["wsid"]) 
 
     try:
         # 📌 Validate required fields (optional เพิ่มเติม)
@@ -146,40 +152,49 @@ def create_product():
             if not data.get(field):
                 return jsonify({"error": f"❌ Missing required field: {field}"}), 400
 
-        # ✅ สร้าง Product
+        # (ทางเลือก) กัน SKU ชนกันภายใน workspace เดียวกัน
+        dup = (
+            db.session.query(Product.id)
+            .filter(Product.workspace_id == wsid, Product.sku == data["sku"])
+            .first()
+        )
+        if dup:
+            return jsonify({"error": "❌ SKU นี้ถูกใช้แล้วในร้านนี้"}) , 409
+
+        # ✅ สร้าง Product (ผูก workspace_id)
         new_product = Product(
-            name=data["name"],
-            sku=data["sku"],
-            category=data["category"],
-            unit=data["unit"],
-            cost_price=data["cost_price"],
-            has_expire=str(data["has_expire"]).lower() == "true"
+            workspace_id = wsid,            # <-- สำคัญ
+            name         = data["name"],
+            sku          = data["sku"],
+            category     = data["category"],
+            unit         = data["unit"],
+            cost_price   = data["cost_price"],
+            has_expire   = str(data.get("has_expire", "false")).lower() == "true",
         )
 
         # ✅ เพิ่ม Variants
         variants_data = json.loads(data["variants"])
         for v in variants_data:
             variant = ProductVariant(
-                sku_suffix=v["sku_suffix"],
-                sale_mode=v["sale_mode"],
-                pack_size=v["pack_size"],
-                selling_price=v["selling_price"],
-                is_active = v["is_active"]
+                sku_suffix    = v["sku_suffix"],
+                sale_mode     = v["sale_mode"],
+                pack_size     = v["pack_size"],
+                selling_price = v["selling_price"],
+                is_active     = v["is_active"],
             )
             new_product.variants.append(variant)
+
         db.session.add(new_product)
         db.session.flush()
 
-        
-        # สร้างโฟลเดอร์หากยังไม่มี
         os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
-        # ✅ บันทึก main image
+        # ✅ รูปหลัก
         if main_image and allowed_file(main_image.filename):
             filename = save_image(main_image)
             db.session.add(ProductImage(product_id=new_product.id, image_filename=filename, is_main=True))
 
-        # ✅ บันทึก other images
+        # ✅ รูปอื่น ๆ
         for img in other_images:
             if img and allowed_file(img.filename):
                 filename = save_image(img)
@@ -189,8 +204,8 @@ def create_product():
         return jsonify({"message": "✅ Product and variants created successfully!"}), 201
 
     except SQLAlchemyError as e:
-            db.session.rollback()
-            return jsonify({"error": f"❌ Database error: {str(e)}"}), 500
+        db.session.rollback()
+        return jsonify({"error": f"❌ Database error: {str(e)}"}), 500
     except Exception as e:
         return jsonify({"error": f"❌ Unexpected error: {str(e)}"}), 500
     

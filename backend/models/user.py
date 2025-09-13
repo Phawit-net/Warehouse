@@ -9,6 +9,10 @@ class User(TimestampMixin, IDMixin, db.Model):
     password_hash = db.Column(db.String(255), nullable=False)
     is_active = db.Column(db.Boolean, default=True, nullable=False)
     last_login_at = db.Column(db.DateTime)
+    
+    name          = db.Column(db.String(100))       # display name
+    phone         = db.Column(db.String(30))
+    avatar_path   = db.Column(db.String(255))       # เก็บ relative path เช่น "avatars/xxx.jpg"
 
     memberships = relationship("Membership", back_populates="user", cascade="all, delete-orphan")
     refresh_tokens = relationship("RefreshToken", back_populates="user", cascade="all, delete-orphan")

@@ -41,7 +41,7 @@ def create_app():
     # ----- init extensions -----
     cors.init_app(
         app,
-        resources={r"/api/*": {"origins": app.config.get("FRONTEND_ORIGIN", "http://localhost:3000")}},
+        resources={ r"/api/*": { "origins": ["http://localhost:3000", "http://127.0.0.1:3000"] } }, 
         supports_credentials=True,
         allow_headers=["Content-Type", "Authorization", "X-CSRF-TOKEN"],  # ⬅️ สำคัญ
     )

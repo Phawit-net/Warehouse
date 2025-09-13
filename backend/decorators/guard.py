@@ -5,6 +5,7 @@ from flask_jwt_extended import get_jwt
 from models import Workspace, Membership
 from services.plan import get_limits, has_feature, within_quota_members, within_quota_warehouses, ROLE_PERMS
 
+#(OWNER เท่านั้น)
 def require_perm(perm: str):
     def deco(fn):
         @wraps(fn)
@@ -16,7 +17,8 @@ def require_perm(perm: str):
         return wrapper
     return deco
 
-def require_feature(key: str):
+#(แผนที่เปิดฟีเจอร์)
+def enforce_plan_feature(key: str):
     def deco(fn):
         @wraps(fn)
         def wrapper(*args, **kwargs):
@@ -28,6 +30,8 @@ def require_feature(key: str):
         return wrapper
     return deco
 
+
+#(เช็คจำนวน non-owner ไม่เกินโควตา PRO/ENT)
 def enforce_quota(resource: str):  # "members" | "warehouses"
     def deco(fn):
         @wraps(fn)

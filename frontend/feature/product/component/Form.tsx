@@ -16,6 +16,7 @@ import VariantField from "./VariantField";
 import ToggleSwitch from "@/components/ToggleSwitch";
 import Collapse from "@/components/Collapse";
 import SubmitButton from "@/components/SubmitButton";
+import { axiosInst } from "@/lib/api";
 
 type Props = {
   mode: "add" | "edit";
@@ -136,7 +137,7 @@ const Form = ({ mode, initialData }: Props) => {
       const formData = buildFormData(data);
       try {
         if (mode === "add") {
-          await axios.post("http://localhost:5001/api/inventory", formData);
+          await axiosInst.post("/api/inventory", formData);
         } else if (mode === "edit" && initialData?.id) {
           await axios.patch(
             `http://localhost:5001/api/inventory/${initialData.id}`,
